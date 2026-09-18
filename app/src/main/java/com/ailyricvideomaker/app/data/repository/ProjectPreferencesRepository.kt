@@ -104,7 +104,7 @@ class ProjectPreferencesRepository(private val context: Context) {
                     textOpacity = styleObj.optDouble("textOpacity", 1.0).toFloat(),
                     alignment = try {
                         TextAlignment.valueOf(styleObj.optString("alignment", "CENTER"))
-                    } catch (_: Exception) {
+                    } catch (e: Exception) {
                         TextAlignment.CENTER
                     },
                     verticalBias = styleObj.optDouble("verticalBias", 0.5).toFloat(),
@@ -126,7 +126,7 @@ class ProjectPreferencesRepository(private val context: Context) {
                 AnimationConfig(
                     style = try {
                         LyricAnimationStyle.valueOf(animObj.optString("style", "FADE"))
-                    } catch (_: Exception) {
+                    } catch (e: Exception) {
                         LyricAnimationStyle.FADE
                     },
                     durationMs = animObj.optLong("durationMs", 350L),
@@ -150,7 +150,7 @@ class ProjectPreferencesRepository(private val context: Context) {
                 textStyle = textStyle,
                 animation = animation
             )
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             ProjectData()
         }
     }

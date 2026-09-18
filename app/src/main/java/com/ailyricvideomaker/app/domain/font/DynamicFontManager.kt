@@ -41,7 +41,7 @@ class DynamicFontManager(private val context: Context) {
         return try {
             val typeface = Typeface.createFromFile(file)
             FontFamily(typeface)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             null
         }
     }

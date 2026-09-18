@@ -72,7 +72,7 @@ class LyricVideoViewModel(application: Application) : AndroidViewModel(applicati
                 val uri = Uri.parse(uriString)
                 audioEngine.initializePlayer(uri)
                 extractWaveform(uri)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 // Graceful fallback if permission expired
             }
         }

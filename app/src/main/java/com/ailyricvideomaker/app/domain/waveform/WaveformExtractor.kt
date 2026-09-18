@@ -29,7 +29,7 @@ class WaveformExtractor(private val context: Context) {
                     return@withContext downsampleBytes(bytes, sampleCount)
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             // Fallback gracefully below
         }
 

@@ -353,7 +353,7 @@ fun PreviewTabContent(
                             color = try {
                                 Color(android.graphics.Color.parseColor(style.textColorHex))
                                     .copy(alpha = style.textOpacity)
-                            } catch (_: Exception) {
+                            } catch (e: Exception) {
                                 Color.White
                             },
                             style = androidx.compose.ui.text.TextStyle(
