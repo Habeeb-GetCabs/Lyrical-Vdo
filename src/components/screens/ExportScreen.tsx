@@ -157,6 +157,34 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({
           </div>
         </div>
 
+        {/* Animation Mode Selector: Option A vs Option B */}
+        <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
+          <span className="text-slate-400">Animation Mode</span>
+          <div className="flex items-center bg-slate-950 p-0.5 rounded-xl border border-slate-800">
+            <button
+              onClick={() => onUpdateProject({ animationMode: 'manual' })}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                project.animationMode !== 'auto'
+                  ? 'bg-slate-700 text-white shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              A: Manual
+            </button>
+            <button
+              onClick={() => onUpdateProject({ animationMode: 'auto' })}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                project.animationMode === 'auto'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Sparkles className="w-3 h-3" />
+              <span>B: Auto Animate</span>
+            </button>
+          </div>
+        </div>
+
         {/* Export Progress Bar */}
         {isExportingVideo && exportProgress && (
           <div className="space-y-2 pt-2 border-t border-slate-800">

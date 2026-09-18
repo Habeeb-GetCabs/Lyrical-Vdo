@@ -10,6 +10,7 @@ import { DesignScreen } from './components/screens/DesignScreen';
 import { PreviewScreen } from './components/screens/PreviewScreen';
 import { ExportScreen } from './components/screens/ExportScreen';
 import { CIGuideScreen } from './components/screens/CIGuideScreen';
+import { AutoAnimateScreen } from './components/screens/AutoAnimateScreen';
 import { PWAInstallButton } from './components/pwa/PWAInstallButton';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import {
@@ -23,6 +24,7 @@ import {
   Home,
   Github,
   Check,
+  Zap,
 } from 'lucide-react';
 
 export type TabType =
@@ -31,6 +33,7 @@ export type TabType =
   | 'lyrics'
   | 'sync'
   | 'words'
+  | 'auto_animate'
   | 'design'
   | 'preview'
   | 'export'
@@ -221,6 +224,25 @@ export default function App() {
 
         {/* Right Header Actions */}
         <div className="flex items-center space-x-2">
+          {/* Quick Workflow Switcher Pill */}
+          <button
+            onClick={() => setActiveTab('auto_animate')}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 border border-slate-700 text-xs font-semibold transition"
+            title="Switch or customize lyric animation workflow"
+          >
+            {project.animationMode === 'auto' ? (
+              <span className="text-amber-400 flex items-center gap-1 font-bold">
+                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
+                <span className="hidden sm:inline">Option B:</span> Auto Animate
+              </span>
+            ) : (
+              <span className="text-slate-300 flex items-center gap-1">
+                <Sliders className="w-3.5 h-3.5 text-slate-400" />
+                <span className="hidden sm:inline">Option A:</span> Manual
+              </span>
+            )}
+          </button>
+
           {/* In-app PWA install button */}
           <PWAInstallButton />
 
@@ -244,6 +266,7 @@ export default function App() {
           { id: 'lyrics', label: 'Lyrics', icon: FileText },
           { id: 'sync', label: 'Line Sync', icon: Sliders },
           { id: 'words', label: 'Word Karaoke', icon: Sparkles },
+          { id: 'auto_animate', label: '✨ Auto Animate', icon: Zap },
           { id: 'design', label: 'Designer & Fonts', icon: Palette },
           { id: 'preview', label: 'Live Preview', icon: Play },
           { id: 'export', label: 'Export Video', icon: Download },
@@ -256,7 +279,9 @@ export default function App() {
               onClick={() => setActiveTab(tab.id as TabType)}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition ${
                 isCurrent
-                  ? 'bg-violet-600 text-white shadow-sm'
+                  ? tab.id === 'auto_animate'
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold shadow-sm'
+                    : 'bg-violet-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
               }`}
             >
@@ -321,6 +346,7 @@ export default function App() {
               setSelectedWordSyncLine(lineIdx);
               setActiveTab('words');
             }}
+            onNavigateToTab={(t) => setActiveTab(t)}
           />
         )}
 
@@ -336,6 +362,20 @@ export default function App() {
             onSeek={handleSeek}
             onTogglePlay={handleTogglePlay}
             onBackToSync={() => setActiveTab('sync')}
+          />
+        )}
+
+        {activeTab === 'auto_animate' && (
+          <AutoAnimateScreen
+            project={project}
+            onUpdateProject={(upd) => setProject((prev) => ({ ...prev, ...upd }))}
+            currentTimeMs={currentTimeMs}
+            durationMs={durationMs}
+            isPlaying={isPlaying}
+            onSeek={handleSeek}
+            onTogglePlay={handleTogglePlay}
+            audioBlob={audioBlob}
+            onNavigateToTab={(t) => setActiveTab(t)}
           />
         )}
 
@@ -371,6 +411,7 @@ export default function App() {
             onTogglePlay={handleTogglePlay}
             audioBlob={audioBlob}
             onNavigateToTab={(t) => setActiveTab(t)}
+            onUpdateProject={(upd) => setProject((prev) => ({ ...prev, ...upd }))}
           />
         )}
 
@@ -392,6 +433,7 @@ export default function App() {
           { id: 'lyrics', label: 'Lyrics', icon: FileText },
           { id: 'sync', label: 'Sync', icon: Sliders },
           { id: 'words', label: 'Words', icon: Sparkles },
+          { id: 'auto_animate', label: '✨ Auto', icon: Zap },
           { id: 'design', label: 'Design', icon: Palette },
           { id: 'preview', label: 'Preview', icon: Play },
           { id: 'export', label: 'Export', icon: Download },
@@ -403,7 +445,11 @@ export default function App() {
               key={item.id}
               onClick={() => setActiveTab(item.id as TabType)}
               className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
-                isSelected ? 'text-amber-400 scale-105' : 'text-slate-400 hover:text-slate-200'
+                isSelected
+                  ? item.id === 'auto_animate'
+                    ? 'text-amber-400 font-bold scale-105'
+                    : 'text-amber-400 scale-105'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <IconComp className="w-4 h-4 mb-0.5" />

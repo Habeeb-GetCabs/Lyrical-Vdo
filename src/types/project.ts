@@ -59,6 +59,56 @@ export interface BackgroundConfig {
   overlayOpacity: number;
 }
 
+export type AnimationMode = 'manual' | 'auto';
+
+export type AutoAnimationPreset =
+  | 'dynamic' // Balanced rhythm & energy accents
+  | 'smooth' // Flowing melodic drift & gentle scale
+  | 'kinetic' // Bold punch, upbeat pops & quick cuts
+  | 'cinematic' // Slow atmospheric breathing & ambient glow
+  | 'karaoke'; // Rhythm-synchronized word pulses
+
+export type AutoMotionEffect =
+  | 'PUNCH' // Snappy accent on beat onset
+  | 'DRIFT' // Smooth kinetic drift/glide
+  | 'FLOAT' // Gentle breathing & ambient floating
+  | 'PULSE' // Rhythmic bounce matching tempo
+  | 'FADE_SLOW' // Calm cinematic fade
+  | 'ZOOM_IN' // Build up scale
+  | 'POP_ACCENT'; // Sudden pop on drop/transient
+
+export interface LineAutoAnimation {
+  lineId: string;
+  energyLevel: 'low' | 'medium' | 'high' | 'peak';
+  averageEnergy: number; // 0.0 to 1.0
+  peakOnsetMs: number; // relative to line start or absolute
+  motionEffect: AutoMotionEffect;
+  accentScale: number; // 1.0 to 1.3
+  glowIntensity: number; // 0 to 1
+  isUserOverride?: boolean;
+}
+
+export interface AudioAnalysisSummary {
+  sampleRate: number;
+  totalDurationMs: number;
+  tempoBpm: number;
+  averageEnergy: number;
+  peakEnergy: number;
+  beatCount: number;
+  onsetTimestampsMs: number[];
+  energyEnvelope: number[]; // e.g. 50-100 normalized points across track
+}
+
+export interface AutoAnimationConfig {
+  preset: AutoAnimationPreset;
+  sensitivity: 'low' | 'normal' | 'high';
+  motionIntensity: number; // 0.5 to 1.5 (default 1.0)
+  accentResponse: 'subtle' | 'punchy' | 'intense';
+  timeline: LineAutoAnimation[];
+  analysisSummary?: AudioAnalysisSummary;
+  lastGeneratedDate?: number;
+}
+
 export interface ProjectMetadata {
   title: string;
   artist: string;
@@ -80,6 +130,8 @@ export interface ProjectData {
   animationStyle: AnimationStyle;
   background: BackgroundConfig;
   exportResolution: '720p' | '1080p';
+  animationMode?: AnimationMode;
+  autoAnimationConfig?: AutoAnimationConfig;
 }
 
 export const DEFAULT_TEXT_STYLE: TextStyleConfig = {

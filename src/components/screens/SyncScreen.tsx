@@ -27,6 +27,7 @@ interface SyncScreenProps {
   onTogglePlay: () => void;
   audioBlob: Blob | null;
   onNavigateToWordSync: (lineIndex: number) => void;
+  onNavigateToTab?: (tab: any) => void;
 }
 
 export const SyncScreen: React.FC<SyncScreenProps> = ({
@@ -39,6 +40,7 @@ export const SyncScreen: React.FC<SyncScreenProps> = ({
   onTogglePlay,
   audioBlob,
   onNavigateToWordSync,
+  onNavigateToTab,
 }) => {
   // Tap-to-Sync modal state
   const [isTapModalOpen, setIsTapModalOpen] = useState(false);
@@ -254,6 +256,35 @@ export const SyncScreen: React.FC<SyncScreenProps> = ({
         activeLineIndex={activeLineIndex}
         audioBlob={audioBlob}
       />
+
+      {/* Option B Quick Shortcut Banner */}
+      {onNavigateToTab && (
+        <div className="bg-gradient-to-r from-violet-950/70 via-slate-900 to-amber-950/40 p-3 rounded-2xl border border-amber-500/30 flex items-center justify-between gap-3 text-xs shadow-md">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-amber-400/20 text-amber-300 flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="font-bold text-slate-100 flex items-center gap-1.5">
+                <span>Auto Animate Lyrics</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 font-mono">
+                  NEW
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Generate dynamic rhythm & energy motion automatically.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => onNavigateToTab('auto_animate')}
+            className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs shrink-0 transition active:scale-95 shadow"
+          >
+            Try Option B
+          </button>
+        </div>
+      )}
 
       {/* Global Shift Bar */}
       <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between text-xs">

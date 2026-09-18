@@ -14,6 +14,37 @@
     from { transform: scale(0.95); }
     to { transform: scale(1.05); }
   }
+  @keyframes autoPunch {
+    0% { transform: scale(0.88); opacity: 0; }
+    40% { transform: scale(1.18); opacity: 1; }
+    70% { transform: scale(0.98); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes autoPop {
+    0% { transform: scale(0.75); opacity: 0; }
+    60% { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes autoDrift {
+    0% { transform: translateX(-16px) translateY(8px); opacity: 0; }
+    30% { opacity: 1; }
+    100% { transform: translateX(8px) translateY(-4px); opacity: 1; }
+  }
+  @keyframes autoFloat {
+    0% { transform: translateY(6px); opacity: 0; }
+    50% { transform: translateY(-4px); opacity: 1; }
+    100% { transform: translateY(0px); opacity: 1; }
+  }
+  @keyframes autoPulseBpm {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+    100% { transform: scale(1); }
+  }
+  @keyframes autoFadeSlow {
+    0% { opacity: 0; filter: blur(4px); }
+    100% { opacity: 1; filter: blur(0px); }
+  }
+
   .animate-fade-in {
     animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
@@ -22,5 +53,23 @@
   }
   .animate-zoom {
     animation: zoomPulse 2s ease-in-out infinite alternate;
+  }
+  .animate-auto-punch {
+    animation: autoPunch 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
+  .animate-auto-pop {
+    animation: autoPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .animate-auto-drift {
+    animation: autoDrift 2.5s ease-out forwards;
+  }
+  .animate-auto-float {
+    animation: autoFloat 3s ease-in-out infinite alternate;
+  }
+  .animate-auto-pulse {
+    animation: autoPulseBpm 0.8s ease-in-out infinite;
+  }
+  .animate-auto-fade-slow {
+    animation: autoFadeSlow 0.6s ease-out forwards;
   }
 }

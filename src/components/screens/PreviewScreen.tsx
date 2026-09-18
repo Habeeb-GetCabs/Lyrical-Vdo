@@ -23,6 +23,7 @@ interface PreviewScreenProps {
   onTogglePlay: () => void;
   audioBlob: Blob | null;
   onNavigateToTab: (tab: any) => void;
+  onUpdateProject?: (updates: Partial<ProjectData>) => void;
 }
 
 export const PreviewScreen: React.FC<PreviewScreenProps> = ({
@@ -34,17 +35,70 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
   onTogglePlay,
   audioBlob,
   onNavigateToTab,
+  onUpdateProject,
 }) => {
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const { textStyle, animationStyle, background } = project;
+  const isAutoMode = project.animationMode === 'auto';
+  const autoConfig = project.autoAnimationConfig;
 
   // Find active line
   const activeLineIndex = project.lyrics.findIndex(
     (l) => currentTimeMs >= l.startTimeMs && currentTimeMs <= l.endTimeMs
   );
   const activeLine = activeLineIndex !== -1 ? project.lyrics[activeLineIndex] : null;
+
+  // Active line auto-animation config
+  const lineAutoAnim =
+    isAutoMode && activeLine && autoConfig?.timeline
+      ? autoConfig.timeline.find((t) => t.lineId === activeLine.id)
+      : null;
+
+  // Compute CSS animation class for the active line
+  let animationClass = '';
+  let autoDynamicStyle: React.CSSProperties = {};
+
+  if (isAutoMode && lineAutoAnim) {
+    switch (lineAutoAnim.motionEffect) {
+      case 'PUNCH':
+        animationClass = 'animate-auto-punch';
+        break;
+      case 'POP_ACCENT':
+        animationClass = 'animate-auto-pop';
+        break;
+      case 'DRIFT':
+        animationClass = 'animate-auto-drift';
+        break;
+      case 'FLOAT':
+        animationClass = 'animate-auto-float';
+        break;
+      case 'PULSE':
+        animationClass = 'animate-auto-pulse';
+        break;
+      case 'ZOOM_IN':
+        animationClass = 'animate-zoom';
+        break;
+      case 'FADE_SLOW':
+        animationClass = 'animate-auto-fade-slow';
+        break;
+      default:
+        animationClass = 'animate-fade-in';
+    }
+
+    if (lineAutoAnim.glowIntensity > 0.4) {
+      autoDynamicStyle.filter = `drop-shadow(0 0 ${lineAutoAnim.glowIntensity * 12}px ${
+        textStyle.highlightColor || '#F59E0B'
+      })`;
+    }
+  } else {
+    // Manual animation style
+    if (animationStyle === 'FADE') animationClass = 'animate-fade-in';
+    else if (animationStyle === 'SLIDE') animationClass = 'animate-slide-up';
+    else if (animationStyle === 'ZOOM' || animationStyle === 'SCALE') animationClass = 'animate-zoom';
+    else if (animationStyle === 'BOUNCE') animationClass = 'animate-bounce';
+  }
 
   // Toggle fullscreen on video card
   const toggleFullscreen = () => {
@@ -87,7 +141,43 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
   }
 
   return (
-    <div className="max-w-md mx-auto w-full flex-1 flex flex-col pb-8">
+    <div className="max-w-md mx-auto w-full flex-1 flex flex-col pb-8 select-none">
+      {/* Workflow Mode Comparison Selector: Option A (Manual) vs Option B (Auto Animate) */}
+      <div className="mb-2.5 bg-slate-900/90 rounded-2xl border border-slate-800 p-2 flex items-center justify-between text-xs">
+        <div className="flex items-center gap-1.5 pl-1.5">
+          <span className="text-[11px] font-semibold text-slate-400">Workflow:</span>
+          {isAutoMode && lineAutoAnim && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-500/30 font-semibold truncate max-w-[130px]">
+              ✨ {lineAutoAnim.motionEffect}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center bg-slate-950 p-0.5 rounded-xl border border-slate-800 text-[11px]">
+          <button
+            onClick={() => onUpdateProject?.({ animationMode: 'manual' })}
+            className={`px-2.5 py-1 rounded-lg font-semibold transition ${
+              !isAutoMode
+                ? 'bg-slate-700 text-white shadow'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            A: Manual
+          </button>
+          <button
+            onClick={() => onUpdateProject?.({ animationMode: 'auto' })}
+            className={`px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1 ${
+              isAutoMode
+                ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 shadow'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Sparkles className="w-3 h-3" />
+            <span>B: Auto Animate</span>
+          </button>
+        </div>
+      </div>
+
       {/* 9:16 Aspect Ratio Canvas Card */}
       <div
         ref={containerRef}
@@ -138,17 +228,7 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
           {activeLine ? (
             <div
               key={activeLine.id}
-              className={`transition-all text-center ${
-                animationStyle === 'FADE'
-                  ? 'animate-fade-in'
-                  : animationStyle === 'SLIDE'
-                  ? 'animate-slide-up'
-                  : animationStyle === 'ZOOM' || animationStyle === 'SCALE'
-                  ? 'animate-zoom'
-                  : animationStyle === 'BOUNCE'
-                  ? 'animate-bounce'
-                  : ''
-              }`}
+              className={`transition-all text-center ${animationClass}`}
               style={{
                 fontFamily: textStyle.fontFamily,
                 fontSize: `${textStyle.fontSize}px`,
@@ -165,6 +245,7 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
                 WebkitTextStroke: textStyle.hasStroke
                   ? `${textStyle.strokeWidth}px ${textStyle.strokeColor || '#000'}`
                   : 'none',
+                ...autoDynamicStyle,
               }}
             >
               {/* Karaoke Word-by-Word highlighting vs Line rendering */}
@@ -206,7 +287,9 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
         <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-auto">
           <div className="bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10 text-[10px] text-slate-300 flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>9:16 Real-time Preview</span>
+            <span>
+              {isAutoMode ? '✨ Auto Animate Active' : 'Manual 9:16 Preview'}
+            </span>
           </div>
 
           <button

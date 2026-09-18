@@ -262,28 +262,105 @@ export function drawLyricFrame(
   ctx.save();
   let opacity = 1.0;
   let scale = 1.0;
+  let offsetX = 0;
   let offsetY = 0;
 
-  if (animationStyle === 'FADE') {
-    if (lineProgress < 0.15) opacity = lineProgress / 0.15;
-    else if (lineProgress > 0.85) opacity = (1 - lineProgress) / 0.15;
-  } else if (animationStyle === 'SLIDE') {
-    if (lineProgress < 0.2) {
-      offsetY = (1 - lineProgress / 0.2) * 40;
-      opacity = lineProgress / 0.2;
-    } else if (lineProgress > 0.85) {
-      offsetY = -((lineProgress - 0.85) / 0.15) * 40;
-      opacity = (1 - lineProgress) / 0.15;
+  const isAutoMode = project.animationMode === 'auto';
+  const autoConfig = project.autoAnimationConfig;
+  const lineAutoAnim =
+    isAutoMode && autoConfig?.timeline
+      ? autoConfig.timeline.find((t) => t.lineId === activeLine.id)
+      : null;
+
+  if (isAutoMode && lineAutoAnim) {
+    // Auto Animation Kinematics
+    const intensity = autoConfig?.motionIntensity ?? 1.0;
+    const accentScale = lineAutoAnim.accentScale ?? 1.15;
+
+    switch (lineAutoAnim.motionEffect) {
+      case 'PUNCH': {
+        // Sharp punch on beat entry, settles smoothly
+        if (lineProgress < 0.2) {
+          const punchT = lineProgress / 0.2;
+          scale = 0.9 + Math.sin(punchT * Math.PI) * (accentScale - 0.9) * intensity;
+          opacity = Math.min(1, punchT * 1.5);
+        } else if (lineProgress > 0.85) {
+          opacity = (1 - lineProgress) / 0.15;
+        } else {
+          scale = 1.0;
+        }
+        break;
+      }
+      case 'POP_ACCENT': {
+        if (lineProgress < 0.25) {
+          const popT = lineProgress / 0.25;
+          scale = 0.85 + Math.sin(popT * (Math.PI / 2)) * (accentScale - 0.85);
+          opacity = popT;
+        } else if (lineProgress > 0.88) {
+          opacity = (1 - lineProgress) / 0.12;
+        } else {
+          scale = 1.0 + (accentScale - 1.0) * 0.2;
+        }
+        break;
+      }
+      case 'DRIFT': {
+        // Flowing kinetic horizontal/vertical drift
+        opacity = lineProgress < 0.15 ? lineProgress / 0.15 : lineProgress > 0.85 ? (1 - lineProgress) / 0.15 : 1.0;
+        offsetX = (lineProgress - 0.5) * 30 * intensity;
+        offsetY = Math.sin(lineProgress * Math.PI) * -8 * intensity;
+        break;
+      }
+      case 'FLOAT': {
+        // Gentle breathing atmospheric float
+        opacity = lineProgress < 0.2 ? lineProgress / 0.2 : lineProgress > 0.8 ? (1 - lineProgress) / 0.2 : 1.0;
+        offsetY = Math.sin(lineProgress * Math.PI * 2) * 12 * intensity;
+        scale = 1.0 + Math.sin(lineProgress * Math.PI) * 0.04 * intensity;
+        break;
+      }
+      case 'PULSE': {
+        // Rhythmic pulsing bounce
+        opacity = lineProgress < 0.1 ? lineProgress / 0.1 : lineProgress > 0.9 ? (1 - lineProgress) / 0.1 : 1.0;
+        scale = 1.0 + Math.abs(Math.sin(lineProgress * Math.PI * 4)) * 0.08 * intensity;
+        break;
+      }
+      case 'ZOOM_IN': {
+        opacity = lineProgress < 0.15 ? lineProgress / 0.15 : lineProgress > 0.85 ? (1 - lineProgress) / 0.15 : 1.0;
+        scale = 0.92 + lineProgress * 0.16 * intensity;
+        break;
+      }
+      case 'FADE_SLOW': {
+        if (lineProgress < 0.25) opacity = lineProgress / 0.25;
+        else if (lineProgress > 0.75) opacity = (1 - lineProgress) / 0.25;
+        break;
+      }
+      default: {
+        if (lineProgress < 0.15) opacity = lineProgress / 0.15;
+        else if (lineProgress > 0.85) opacity = (1 - lineProgress) / 0.15;
+      }
     }
-  } else if (animationStyle === 'ZOOM' || animationStyle === 'SCALE') {
-    scale = 0.95 + lineProgress * 0.1;
-  } else if (animationStyle === 'BOUNCE') {
-    const t = Math.min(1, lineProgress * 4);
-    scale = 1 + Math.sin(t * Math.PI) * 0.12;
+  } else {
+    // Manual animation calculation
+    if (animationStyle === 'FADE') {
+      if (lineProgress < 0.15) opacity = lineProgress / 0.15;
+      else if (lineProgress > 0.85) opacity = (1 - lineProgress) / 0.15;
+    } else if (animationStyle === 'SLIDE') {
+      if (lineProgress < 0.2) {
+        offsetY = (1 - lineProgress / 0.2) * 40;
+        opacity = lineProgress / 0.2;
+      } else if (lineProgress > 0.85) {
+        offsetY = -((lineProgress - 0.85) / 0.15) * 40;
+        opacity = (1 - lineProgress) / 0.15;
+      }
+    } else if (animationStyle === 'ZOOM' || animationStyle === 'SCALE') {
+      scale = 0.95 + lineProgress * 0.1;
+    } else if (animationStyle === 'BOUNCE') {
+      const t = Math.min(1, lineProgress * 4);
+      scale = 1 + Math.sin(t * Math.PI) * 0.12;
+    }
   }
 
   ctx.globalAlpha = Math.max(0, Math.min(1, opacity));
-  ctx.translate(width / 2, targetY + offsetY);
+  ctx.translate(width / 2 + offsetX, targetY + offsetY);
   ctx.scale(scale, scale);
 
   // Setup font
