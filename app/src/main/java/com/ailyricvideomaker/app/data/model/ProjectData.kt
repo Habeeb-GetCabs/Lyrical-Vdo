@@ -12,8 +12,12 @@ data class ProjectData(
     val audioDurationMs: Long = 0L,
     val fontUri: String? = null,
     val fontName: String? = null,
+    val selectedFontId: String? = null,
+    val selectedFontPath: String? = null,
+    val videoDuration: VideoDurationOption = VideoDurationOption.FULL_SONG,
     val rawLyricsText: String = "",
     val lyricLines: List<LyricLine> = emptyList(),
     val textStyle: TextStyleConfig = TextStyleConfig(),
     val animation: AnimationConfig = AnimationConfig()
 )
+

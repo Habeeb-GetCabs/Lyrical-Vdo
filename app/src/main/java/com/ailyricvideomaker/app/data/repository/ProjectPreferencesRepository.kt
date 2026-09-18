@@ -2,13 +2,14 @@ package com.ailyricvideomaker.app.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.net.Uri
 import com.ailyricvideomaker.app.data.model.AnimationConfig
 import com.ailyricvideomaker.app.data.model.LyricAnimationStyle
 import com.ailyricvideomaker.app.data.model.LyricLine
 import com.ailyricvideomaker.app.data.model.ProjectData
+import com.ailyricvideomaker.app.data.model.RhythmPreset
 import com.ailyricvideomaker.app.data.model.TextAlignment
 import com.ailyricvideomaker.app.data.model.TextStyleConfig
+import com.ailyricvideomaker.app.data.model.VideoDurationOption
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -34,6 +35,9 @@ class ProjectPreferencesRepository(private val context: Context) {
             put("audioDurationMs", project.audioDurationMs)
             put("fontUri", project.fontUri ?: "")
             put("fontName", project.fontName ?: "")
+            put("selectedFontId", project.selectedFontId ?: "")
+            put("selectedFontPath", project.selectedFontPath ?: "")
+            put("videoDuration", project.videoDuration.name)
             put("rawLyricsText", project.rawLyricsText)
 
             val linesArray = JSONArray()
@@ -67,7 +71,9 @@ class ProjectPreferencesRepository(private val context: Context) {
 
             val animObj = JSONObject().apply {
                 put("style", project.animation.style.name)
+                put("rhythmPreset", project.animation.rhythmPreset.name)
                 put("durationMs", project.animation.durationMs)
+                put("speedMultiplier", project.animation.speedMultiplier.toDouble())
                 put("highlightColorHex", project.animation.highlightColorHex)
             }
             put("animation", animObj)
@@ -129,11 +135,23 @@ class ProjectPreferencesRepository(private val context: Context) {
                     } catch (e: Exception) {
                         LyricAnimationStyle.FADE
                     },
+                    rhythmPreset = try {
+                        RhythmPreset.valueOf(animObj.optString("rhythmPreset", "SMOOTH"))
+                    } catch (e: Exception) {
+                        RhythmPreset.SMOOTH
+                    },
                     durationMs = animObj.optLong("durationMs", 350L),
+                    speedMultiplier = animObj.optDouble("speedMultiplier", 1.0).toFloat(),
                     highlightColorHex = animObj.optString("highlightColorHex", "#F59E0B")
                 )
             } else {
                 AnimationConfig()
+            }
+
+            val videoDuration = try {
+                VideoDurationOption.valueOf(root.optString("videoDuration", "FULL_SONG"))
+            } catch (e: Exception) {
+                VideoDurationOption.FULL_SONG
             }
 
             ProjectData(
@@ -145,6 +163,9 @@ class ProjectPreferencesRepository(private val context: Context) {
                 audioDurationMs = root.optLong("audioDurationMs", 0L),
                 fontUri = root.optString("fontUri").ifEmpty { null },
                 fontName = root.optString("fontName").ifEmpty { null },
+                selectedFontId = root.optString("selectedFontId").ifEmpty { null },
+                selectedFontPath = root.optString("selectedFontPath").ifEmpty { null },
+                videoDuration = videoDuration,
                 rawLyricsText = root.optString("rawLyricsText", ""),
                 lyricLines = linesList,
                 textStyle = textStyle,
@@ -155,3 +176,4 @@ class ProjectPreferencesRepository(private val context: Context) {
         }
     }
 }
+

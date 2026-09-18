@@ -9,11 +9,14 @@ import com.ailyricvideomaker.app.data.model.AnimationConfig
 import com.ailyricvideomaker.app.data.model.LyricAnimationStyle
 import com.ailyricvideomaker.app.data.model.LyricLine
 import com.ailyricvideomaker.app.data.model.ProjectData
+import com.ailyricvideomaker.app.data.model.RhythmPreset
 import com.ailyricvideomaker.app.data.model.TextAlignment
 import com.ailyricvideomaker.app.data.model.TextStyleConfig
+import com.ailyricvideomaker.app.data.model.VideoDurationOption
 import com.ailyricvideomaker.app.data.repository.ProjectPreferencesRepository
 import com.ailyricvideomaker.app.domain.audio.AudioEngine
 import com.ailyricvideomaker.app.domain.font.DynamicFontManager
+import com.ailyricvideomaker.app.domain.font.FontItem
 import com.ailyricvideomaker.app.domain.sync.ManualTapSyncEngine
 import com.ailyricvideomaker.app.domain.waveform.WaveformExtractor
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -23,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 
 class LyricVideoViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -34,6 +38,12 @@ class LyricVideoViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _projectState = MutableStateFlow(ProjectData())
     val projectState: StateFlow<ProjectData> = _projectState.asStateFlow()
+
+    private val _fontLibrary = MutableStateFlow<List<FontItem>>(emptyList())
+    val fontLibrary: StateFlow<List<FontItem>> = _fontLibrary.asStateFlow()
+
+    private val _selectedFontItem = MutableStateFlow<FontItem?>(null)
+    val selectedFontItem: StateFlow<FontItem?> = _selectedFontItem.asStateFlow()
 
     private val _customFontFamily = MutableStateFlow<FontFamily?>(null)
     val customFontFamily: StateFlow<FontFamily?> = _customFontFamily.asStateFlow()
@@ -59,10 +69,28 @@ class LyricVideoViewModel(application: Application) : AndroidViewModel(applicati
         val saved = repository.loadProject()
         _projectState.value = saved
 
-        // Restore custom font if present
-        saved.fontName?.let { name ->
-            fontManager.loadFromLocalFile(name)?.let { font ->
-                _customFontFamily.value = font
+        // Load Font Library and restore selected font
+        viewModelScope.launch {
+            val library = fontManager.getFontLibrary()
+            _fontLibrary.value = library
+
+            val savedId = saved.selectedFontId
+            val savedPath = saved.selectedFontPath
+            val matchedItem = library.find { it.id == savedId || (savedPath != null && it.filePath == savedPath) }
+
+            if (matchedItem != null) {
+                _selectedFontItem.value = matchedItem
+                fontManager.loadFontFamilyFromFile(matchedItem.filePath)?.let { font ->
+                    _customFontFamily.value = font
+                }
+            } else if (savedPath != null && File(savedPath).exists()) {
+                fontManager.loadFontFamilyFromFile(savedPath)?.let { font ->
+                    _customFontFamily.value = font
+                }
+            } else if (!saved.fontName.isNullOrEmpty()) {
+                fontManager.loadFromLocalFile(saved.fontName)?.let { font ->
+                    _customFontFamily.value = font
+                }
             }
         }
 
@@ -82,8 +110,20 @@ class LyricVideoViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             audioEngine.currentPositionMs.collect { pos ->
                 val lines = _projectState.value.lyricLines
+                val maxAllowedMs = when (_projectState.value.videoDuration) {
+                    VideoDurationOption.THIRTY_SECONDS -> 30000L
+                    VideoDurationOption.SIXTY_SECONDS -> 60000L
+                    VideoDurationOption.FULL_SONG -> Long.MAX_VALUE
+                }
+
+                if (pos > maxAllowedMs) {
+                    _activeLyricIndex.value = -1
+                    return@collect
+                }
+
+                // Strictly active between start and end time; gaps return -1 (no lyric shown)
                 val index = lines.indexOfFirst { line ->
-                    pos in line.startTimeMs..line.endTimeMs
+                    pos in line.startTimeMs..line.endTimeMs && line.startTimeMs < maxAllowedMs
                 }
                 _activeLyricIndex.value = index
             }
@@ -154,21 +194,86 @@ class LyricVideoViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun setFontUri(uri: Uri) {
+    // --- Font Management & Library Actions ---
+
+    /**
+     * Imports a single font file into persistent app storage, adds it to the Font Library,
+     * and immediately sets it as the active font for the current project.
+     */
+    fun importSingleFont(uri: Uri) {
         viewModelScope.launch {
             try {
-                val (fontFamily, fontFileName) = fontManager.loadCustomFont(uri)
-                _customFontFamily.value = fontFamily
-                _projectState.value = _projectState.value.copy(
-                    fontUri = uri.toString(),
-                    fontName = fontFileName
-                )
-                persistProject()
-                _userMessage.emit("Custom font '$fontFileName' loaded successfully!")
+                val item = fontManager.importFont(uri)
+                val library = fontManager.getFontLibrary()
+                _fontLibrary.value = library
+                selectFont(item)
+                _userMessage.emit("Font '${item.name}' added to library and set as active font!")
             } catch (e: Exception) {
                 _userMessage.emit("Could not load font: ${e.message}")
             }
         }
+    }
+
+    /**
+     * Imports multiple font files at once into the persistent Font Library.
+     */
+    fun importMultipleFonts(uris: List<Uri>) {
+        viewModelScope.launch {
+            try {
+                val imported = fontManager.importMultipleFonts(uris)
+                val library = fontManager.getFontLibrary()
+                _fontLibrary.value = library
+                if (imported.isNotEmpty()) {
+                    selectFont(imported.first())
+                    _userMessage.emit("Successfully imported ${imported.size} font(s) into library!")
+                } else {
+                    _userMessage.emit("No valid fonts could be imported.")
+                }
+            } catch (e: Exception) {
+                _userMessage.emit("Error importing fonts: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Sets the specified font as the active font for the current project,
+     * updating the Compose preview immediately and persisting the reference.
+     */
+    fun selectFont(fontItem: FontItem) {
+        val fontFamily = fontManager.loadFontFamilyFromFile(fontItem.filePath)
+        _customFontFamily.value = fontFamily
+        _selectedFontItem.value = fontItem
+        _projectState.value = _projectState.value.copy(
+            selectedFontId = fontItem.id,
+            selectedFontPath = fontItem.filePath,
+            fontName = fontItem.name
+        )
+        persistProject()
+    }
+
+    /**
+     * Deletes a font from the global library. If it was active in this project, reverts to default.
+     */
+    fun deleteFontFromLibrary(fontId: String) {
+        viewModelScope.launch {
+            if (_selectedFontItem.value?.id == fontId) {
+                _customFontFamily.value = null
+                _selectedFontItem.value = null
+                _projectState.value = _projectState.value.copy(
+                    selectedFontId = null,
+                    selectedFontPath = null,
+                    fontName = null
+                )
+                persistProject()
+            }
+            fontManager.deleteFont(fontId)
+            _fontLibrary.value = fontManager.getFontLibrary()
+            _userMessage.emit("Font deleted from library.")
+        }
+    }
+
+    fun setFontUri(uri: Uri) {
+        importSingleFont(uri)
     }
 
     // --- Tap to Sync Actions ---
@@ -306,6 +411,21 @@ class LyricVideoViewModel(application: Application) : AndroidViewModel(applicati
     fun updateAnimation(transform: (AnimationConfig) -> AnimationConfig) {
         val updated = transform(_projectState.value.animation)
         _projectState.value = _projectState.value.copy(animation = updated)
+        persistProject()
+    }
+
+    fun setRhythmPreset(preset: RhythmPreset) {
+        _projectState.value = _projectState.value.copy(
+            animation = _projectState.value.animation.copy(
+                rhythmPreset = preset,
+                speedMultiplier = preset.speedMultiplier
+            )
+        )
+        persistProject()
+    }
+
+    fun setVideoDuration(option: VideoDurationOption) {
+        _projectState.value = _projectState.value.copy(videoDuration = option)
         persistProject()
     }
 

@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,6 +17,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -42,9 +45,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.ailyricvideomaker.app.data.model.*
+import com.ailyricvideomaker.app.domain.font.FontItem
 import com.ailyricvideomaker.app.ui.theme.*
 import com.ailyricvideomaker.app.ui.viewmodel.LyricVideoViewModel
 import kotlinx.coroutines.flow.collectLatest
+import android.graphics.Typeface
+import java.io.File
 
 enum class EditorTab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     PREVIEW("Preview", Icons.Default.PlayCircle),
@@ -65,6 +71,8 @@ fun MainEditorScreen(viewModel: LyricVideoViewModel) {
     val isAnalyzingAudio by viewModel.isAnalyzingAudio.collectAsState()
     val activeIndex by viewModel.activeLyricIndex.collectAsState()
     val customFont by viewModel.customFontFamily.collectAsState()
+    val fontLibrary by viewModel.fontLibrary.collectAsState()
+    val selectedFontItem by viewModel.selectedFontItem.collectAsState()
     val tapSyncState by viewModel.tapSyncEngine.state.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -83,10 +91,18 @@ fun MainEditorScreen(viewModel: LyricVideoViewModel) {
         uri?.let { viewModel.setAudioUri(it, it.lastPathSegment) }
     }
 
-    val fontPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+    val singleFontPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
-        uri?.let { viewModel.setFontUri(it) }
+        uri?.let { viewModel.importSingleFont(it) }
+    }
+
+    val multiFontPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            viewModel.importMultipleFonts(uris)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -195,7 +211,9 @@ fun MainEditorScreen(viewModel: LyricVideoViewModel) {
                         projectState = projectState,
                         onPickBackground = { imagePickerLauncher.launch("image/*") },
                         onPickAudio = { audioPickerLauncher.launch("audio/*") },
-                        onPickFont = { fontPickerLauncher.launch("*/*") }
+                        onPickSingleFont = { singleFontPickerLauncher.launch(arrayOf("*/*")) },
+                        onPickMultipleFonts = { multiFontPickerLauncher.launch(arrayOf("*/*")) },
+                        onNavigateToStyleFonts = { currentTab = EditorTab.STYLE }
                     )
                 }
                 EditorTab.LYRICS -> {
@@ -227,8 +245,16 @@ fun MainEditorScreen(viewModel: LyricVideoViewModel) {
                 EditorTab.STYLE -> {
                     StyleTabContent(
                         projectState = projectState,
+                        fontLibrary = fontLibrary,
+                        selectedFontItem = selectedFontItem,
+                        onSelectFont = { viewModel.selectFont(it) },
+                        onDeleteFont = { viewModel.deleteFontFromLibrary(it) },
+                        onPickSingleFont = { singleFontPickerLauncher.launch(arrayOf("*/*")) },
+                        onPickMultipleFonts = { multiFontPickerLauncher.launch(arrayOf("*/*")) },
                         onUpdateStyle = { viewModel.updateTextStyle(it) },
-                        onUpdateAnimation = { viewModel.updateAnimation(it) }
+                        onUpdateAnimation = { viewModel.updateAnimation(it) },
+                        onSetRhythmPreset = { viewModel.setRhythmPreset(it) },
+                        onSetVideoDuration = { viewModel.setVideoDuration(it) }
                     )
                 }
             }
@@ -445,7 +471,9 @@ fun MediaTabContent(
     projectState: ProjectData,
     onPickBackground: () -> Unit,
     onPickAudio: () -> Unit,
-    onPickFont: () -> Unit
+    onPickSingleFont: () -> Unit,
+    onPickMultipleFonts: () -> Unit,
+    onNavigateToStyleFonts: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -558,27 +586,51 @@ fun MediaTabContent(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.FontDownload, contentDescription = null, tint = VioletPrimary)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("3. Custom Font (TTF / OTF)", fontWeight = FontWeight.SemiBold, color = Slate100)
+                            Text("3. Persistent Font Library", fontWeight = FontWeight.SemiBold, color = Slate100)
                         }
                         if (projectState.fontName != null) {
-                            Text("Loaded", color = EmeraldSuccess, fontSize = 12.sp)
+                            Text("Active: ${projectState.fontName}", color = AmberAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = projectState.fontName ?: "Upload custom Tamil or English .ttf or .otf file",
+                        text = "Upload Tamil or English .ttf or .otf fonts. Fonts are stored persistently in app storage and stay available across sessions.",
                         color = Slate400,
                         fontSize = 13.sp
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick = onPickFont,
-                        colors = ButtonDefaults.buttonColors(containerColor = Slate800),
-                        modifier = Modifier.fillMaxWidth()
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.Upload, contentDescription = null, tint = VioletPrimary)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (projectState.fontName != null) "Change Font" else "Upload Font (.TTF / .OTF)")
+                        Button(
+                            onClick = onPickSingleFont,
+                            colors = ButtonDefaults.buttonColors(containerColor = Slate800),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = VioletPrimary, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Add Font", fontSize = 12.sp)
+                        }
+                        Button(
+                            onClick = onPickMultipleFonts,
+                            colors = ButtonDefaults.buttonColors(containerColor = Slate800),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.LibraryAdd, contentDescription = null, tint = VioletPrimary, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Bulk Add", fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onNavigateToStyleFonts,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = VioletPrimary)
+                    ) {
+                        Icon(Icons.Default.Palette, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Manage Library & Styles", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -820,60 +872,345 @@ fun TimelineTabContent(
 // TAB 5: STYLE & ANIMATION TAB
 // -----------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------
+// TAB 5: STYLE & ANIMATION TAB (ORGANIZED INTO 4 SECTIONS: FONT, TEXT, ANIMATION, VIDEO)
+// -----------------------------------------------------------------------------
+
+enum class StyleSubTab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    FONT("Font", Icons.Default.FontDownload),
+    TEXT("Text", Icons.Default.TextFields),
+    ANIMATION("Animation", Icons.Default.AutoAwesome),
+    VIDEO("Video", Icons.Default.Videocam)
+}
+
 @Composable
 fun StyleTabContent(
     projectState: ProjectData,
+    fontLibrary: List<FontItem>,
+    selectedFontItem: FontItem?,
+    onSelectFont: (FontItem) -> Unit,
+    onDeleteFont: (FontItem) -> Unit,
+    onPickSingleFont: () -> Unit,
+    onPickMultipleFonts: () -> Unit,
     onUpdateStyle: ((TextStyleConfig) -> TextStyleConfig) -> Unit,
-    onUpdateAnimation: ((AnimationConfig) -> AnimationConfig) -> Unit
+    onUpdateAnimation: ((AnimationConfig) -> AnimationConfig) -> Unit,
+    onSetRhythmPreset: (RhythmPreset) -> Unit,
+    onSetVideoDuration: (VideoDurationOption) -> Unit
 ) {
+    var activeSubTab by remember { mutableStateOf(StyleSubTab.FONT) }
     val style = projectState.textStyle
     val anim = projectState.animation
 
-    LazyColumn(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        item {
-            Text(
-                text = "Typography & Visual Effects",
-                style = MaterialTheme.typography.titleLarge,
-                color = Slate100,
-                fontWeight = FontWeight.Bold
-            )
+        // Sub-Tab Navigation Bar
+        TabRow(
+            selectedTabIndex = activeSubTab.ordinal,
+            containerColor = Slate900,
+            contentColor = Slate100,
+            indicator = { tabPositions ->
+                TabRowDefaults.Indicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[activeSubTab.ordinal]),
+                    color = VioletPrimary,
+                    height = 3.dp
+                )
+            },
+            divider = { Divider(color = Slate800) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+        ) {
+            StyleSubTab.values().forEach { subTab ->
+                Tab(
+                    selected = activeSubTab == subTab,
+                    onClick = { activeSubTab = subTab },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(subTab.icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(subTab.label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    },
+                    selectedContentColor = VioletPrimary,
+                    unselectedContentColor = Slate400
+                )
+            }
         }
 
-        // Animation Style Selector
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Sub-Tab Contents
+        when (activeSubTab) {
+            StyleSubTab.FONT -> {
+                FontSectionContent(
+                    projectState = projectState,
+                    fontLibrary = fontLibrary,
+                    selectedFontItem = selectedFontItem,
+                    onSelectFont = onSelectFont,
+                    onDeleteFont = onDeleteFont,
+                    onPickSingleFont = onPickSingleFont,
+                    onPickMultipleFonts = onPickMultipleFonts
+                )
+            }
+            StyleSubTab.TEXT -> {
+                TextSectionContent(
+                    style = style,
+                    onUpdateStyle = onUpdateStyle
+                )
+            }
+            StyleSubTab.ANIMATION -> {
+                AnimationSectionContent(
+                    anim = anim,
+                    onUpdateAnimation = onUpdateAnimation,
+                    onSetRhythmPreset = onSetRhythmPreset
+                )
+            }
+            StyleSubTab.VIDEO -> {
+                VideoSectionContent(
+                    projectState = projectState,
+                    onSetVideoDuration = onSetVideoDuration
+                )
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// SECTION 1: FONT LIBRARY & PREVIEWS
+// -----------------------------------------------------------------------------
+
+@Composable
+fun FontSectionContent(
+    projectState: ProjectData,
+    fontLibrary: List<FontItem>,
+    selectedFontItem: FontItem?,
+    onSelectFont: (FontItem) -> Unit,
+    onDeleteFont: (FontItem) -> Unit,
+    onPickSingleFont: () -> Unit,
+    onPickMultipleFonts: () -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Slate900),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Animation Style", fontWeight = FontWeight.SemiBold, color = Slate100)
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Persistent Font Library", fontWeight = FontWeight.Bold, color = Slate100, fontSize = 16.sp)
+                            Text("${fontLibrary.size} custom fonts stored in app storage", color = Slate400, fontSize = 12.sp)
+                        }
+                        if (projectState.fontName != null) {
+                            Badge(containerColor = AmberAccent) {
+                                Text(
+                                    "Active: ${projectState.fontName}",
+                                    color = Slate950,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        LyricAnimationStyle.values().forEach { itemStyle ->
-                            val isSelected = anim.style == itemStyle
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { onUpdateAnimation { it.copy(style = itemStyle) } },
-                                label = { Text(itemStyle.name, fontSize = 11.sp) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = VioletPrimary,
-                                    selectedLabelColor = Slate100
-                                )
-                            )
+                        Button(
+                            onClick = onPickSingleFont,
+                            colors = ButtonDefaults.buttonColors(containerColor = VioletPrimary),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Add Font", fontSize = 12.sp)
+                        }
+                        OutlinedButton(
+                            onClick = onPickMultipleFonts,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = VioletPrimary),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.LibraryAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Bulk Add", fontSize = 12.sp)
                         }
                     }
                 }
             }
         }
 
+        if (fontLibrary.isEmpty()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Slate900),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Default.FontDownload, contentDescription = null, tint = Slate600, modifier = Modifier.size(48.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("No custom fonts uploaded yet", color = Slate300, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Upload .ttf or .otf files (Tamil, English, or mixed Unicode) to use them in your lyric video.",
+                            color = Slate500,
+                            fontSize = 12.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        } else {
+            items(fontLibrary) { fontItem ->
+                val isSelected = fontItem.id == selectedFontItem?.id || fontItem.name == projectState.fontName
+                FontPreviewCard(
+                    fontItem = fontItem,
+                    isSelected = isSelected,
+                    onSelect = { onSelectFont(fontItem) },
+                    onDelete = { onDeleteFont(fontItem) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun FontPreviewCard(
+    fontItem: FontItem,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val customFamily = remember(fontItem.filePath) {
+        try {
+            val file = File(fontItem.filePath)
+            if (file.exists()) {
+                FontFamily(androidx.compose.ui.text.font.Typeface(Typeface.createFromFile(file)))
+            } else {
+                FontFamily.Default
+            }
+        } catch (e: Exception) {
+            FontFamily.Default
+        }
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) Slate850 else Slate900
+        ),
+        border = if (isSelected) BorderStroke(2.dp, VioletPrimary) else BorderStroke(1.dp, Slate800),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelect() }
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Icon(
+                        imageVector = if (isSelected) Icons.Default.CheckCircle else Icons.Default.FontDownload,
+                        contentDescription = null,
+                        tint = if (isSelected) EmeraldSuccess else VioletPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = fontItem.name,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isSelected) Slate100 else Slate200,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = if (isSelected) "Active Project Font (Click to reapply)" else "Tap to apply to video",
+                            color = if (isSelected) EmeraldSuccess else Slate400,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.DeleteOutline,
+                        contentDescription = "Delete font",
+                        tint = Slate400,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Real Unicode rendering preview box
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Slate950, RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "அம்மா என் உயிர் ❤️ தாய்ப்பால்",
+                        fontFamily = customFamily,
+                        color = Slate100,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "Beautiful Lyric Sync • Tamil & English",
+                        fontFamily = customFamily,
+                        color = AmberAccent,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// SECTION 2: TEXT STYLES, COLOURS, ALIGNMENT
+// -----------------------------------------------------------------------------
+
+@Composable
+fun TextSectionContent(
+    style: TextStyleConfig,
+    onUpdateStyle: ((TextStyleConfig) -> TextStyleConfig) -> Unit
+) {
+    var hexInput by remember(style.textColor) {
+        mutableStateOf(String.format("#%06X", (0xFFFFFF and style.textColor)))
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
         // Font Size Slider
         item {
             Card(
@@ -885,13 +1222,13 @@ fun StyleTabContent(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Font Size", color = Slate100)
+                        Text("Font Size", color = Slate100, fontWeight = FontWeight.SemiBold)
                         Text("${style.fontSizeSp.toInt()} sp", color = VioletPrimary, fontWeight = FontWeight.Bold)
                     }
                     Slider(
                         value = style.fontSizeSp,
                         onValueChange = { size -> onUpdateStyle { it.copy(fontSizeSp = size) } },
-                        valueRange = 16f..48f,
+                        valueRange = 14f..52f,
                         colors = SliderDefaults.colors(
                             thumbColor = VioletPrimary,
                             activeTrackColor = VioletPrimary
@@ -901,14 +1238,109 @@ fun StyleTabContent(
             }
         }
 
-        // Vertical Alignment / Bias
+        // Text Color Palette (24 Preset Colors)
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Slate900),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Vertical Position", color = Slate100)
+                    Text("Lyric Text Colour", color = Slate100, fontWeight = FontWeight.SemiBold)
+                    Text("Select from vibrant color presets or type a custom hex code", color = Slate400, fontSize = 12.sp)
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Preset Color Swatches Grid (6 columns)
+                    val chunks = TextStyleConfig.PRESET_COLORS.chunked(6)
+                    chunks.forEach { rowColors ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            rowColors.forEach { colorValue ->
+                                val colorInt = colorValue.toInt()
+                                val isSelected = style.textColor == colorInt
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(colorValue))
+                                        .border(
+                                            width = if (isSelected) 3.dp else 1.dp,
+                                            color = if (isSelected) VioletPrimary else Slate700,
+                                            shape = CircleShape
+                                        )
+                                        .clickable {
+                                            onUpdateStyle { it.copy(textColor = colorInt) }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = if (colorInt == android.graphics.Color.WHITE) Color.Black else Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Divider(color = Slate800)
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Custom Hex Color Input
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color(style.textColor))
+                                .border(1.dp, Slate700, CircleShape)
+                        )
+                        OutlinedTextField(
+                            value = hexInput,
+                            onValueChange = { input ->
+                                hexInput = input
+                                try {
+                                    val clean = input.removePrefix("#").trim()
+                                    if (clean.length == 6) {
+                                        val colorInt = android.graphics.Color.parseColor("#$clean")
+                                        onUpdateStyle { it.copy(textColor = colorInt) }
+                                    }
+                                } catch (_: Exception) {}
+                            },
+                            label = { Text("Custom Hex Color (#RRGGBB)", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = VioletPrimary,
+                                unfocusedBorderColor = Slate700,
+                                focusedTextColor = Slate100,
+                                unfocusedTextColor = Slate200
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // Alignment & Position
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Slate900),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Vertical Position", color = Slate100, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -973,6 +1405,252 @@ fun StyleTabContent(
                             onCheckedChange = { en -> onUpdateStyle { it.copy(strokeEnabled = en) } }
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// SECTION 3: ANIMATION STYLES & RHYTHM PRESETS
+// -----------------------------------------------------------------------------
+
+@Composable
+fun AnimationSectionContent(
+    anim: AnimationConfig,
+    onUpdateAnimation: ((AnimationConfig) -> AnimationConfig) -> Unit,
+    onSetRhythmPreset: (RhythmPreset) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // Animation Style Selector Chips (19 styles)
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Slate900),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Animation Style (19 Modes)", fontWeight = FontWeight.SemiBold, color = Slate100)
+                    Text("Visual entrance, kinetic transition, and exit effect for each line", color = Slate400, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    val chunks = LyricAnimationStyle.values().toList().chunked(3)
+                    chunks.forEach { chunk ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            chunk.forEach { itemStyle ->
+                                val isSelected = anim.style == itemStyle
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { onUpdateAnimation { it.copy(style = itemStyle) } },
+                                    label = { Text(itemStyle.name.replace("_", " "), fontSize = 10.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = VioletPrimary,
+                                        selectedLabelColor = Slate100
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Animated Rhythm Presets (15 Presets)
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Slate900),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Animated Rhythm Presets (15 Styles)", fontWeight = FontWeight.SemiBold, color = Slate100)
+                    Text("Pre-tuned kinetic speed and rhythm matching musical moods", color = Slate400, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    RhythmPreset.values().forEach { preset ->
+                        val isSelected = anim.rhythmPreset == preset
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) Slate850 else Slate950
+                            ),
+                            border = if (isSelected) BorderStroke(1.5.dp, VioletPrimary) else BorderStroke(1.dp, Slate800),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable { onSetRhythmPreset(preset) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = preset.displayName,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) VioletPrimary else Slate100,
+                                            fontSize = 13.sp
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Badge(containerColor = if (isSelected) VioletPrimary else Slate800) {
+                                            Text("${preset.speedMultiplier}x", fontSize = 10.sp, color = Slate100)
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = preset.description,
+                                        color = Slate400,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                if (isSelected) {
+                                    Icon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = VioletPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Animation Speed Multiplier
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Slate900),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Custom Animation Speed", color = Slate100, fontWeight = FontWeight.SemiBold)
+                        Text(String.format("%.1fx", anim.speedMultiplier), color = VioletPrimary, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = anim.speedMultiplier,
+                        onValueChange = { spd -> onUpdateAnimation { it.copy(speedMultiplier = spd) } },
+                        valueRange = 0.5f..2.5f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = VioletPrimary,
+                            activeTrackColor = VioletPrimary
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// SECTION 4: VIDEO DURATION & INSTRUMENTAL GAP SETTINGS
+// -----------------------------------------------------------------------------
+
+@Composable
+fun VideoSectionContent(
+    projectState: ProjectData,
+    onSetVideoDuration: (VideoDurationOption) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Slate900),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Target Video Duration", fontWeight = FontWeight.Bold, color = Slate100, fontSize = 16.sp)
+                    Text("Select how long the final lyric video preview and MP4 export will be.", color = Slate400, fontSize = 12.sp)
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    VideoDurationOption.values().forEach { option ->
+                        val isSelected = projectState.videoDuration == option
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) Slate850 else Slate950
+                            ),
+                            border = if (isSelected) BorderStroke(2.dp, if (isSelected) VioletPrimary else Slate800),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable { onSetVideoDuration(option) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = { onSetVideoDuration(option) },
+                                        colors = RadioButtonDefaults.colors(selectedColor = VioletPrimary)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = option.label,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Slate100,
+                                            fontSize = 14.sp
+                                        )
+                                        Text(
+                                            text = when (option) {
+                                                VideoDurationOption.SECONDS_30 -> "Ideal for Instagram Reels, Shorts, and TikTok (30s limit)"
+                                                VideoDurationOption.SECONDS_60 -> "Standard format for 1-minute social stories and reels"
+                                                VideoDurationOption.FULL_SONG -> "Renders full audio duration without cutting off"
+                                            },
+                                            color = Slate400,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Instrumental Gap & Export Fidelity Explanation Card
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Slate900),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = EmeraldSuccess, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Instrumental Gap & Preview Fidelity", fontWeight = FontWeight.Bold, color = Slate100)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "• During instrumental gaps or sections with no active lyric, the screen displays only the background visuals with no lyric text.\n• The MP4 export strictly matches the live preview layout, selected font, font size, text colors, and duration cutoff.",
+                        color = Slate300,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
+                    )
                 }
             }
         }
