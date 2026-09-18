@@ -13,6 +13,7 @@ import { CIGuideScreen } from './components/screens/CIGuideScreen';
 import { AutoAnimateScreen } from './components/screens/AutoAnimateScreen';
 import { PWAInstallButton } from './components/pwa/PWAInstallButton';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
+import { generateDemoRhythmAudioBlob } from './services/demoAudioGenerator';
 import {
   Sparkles,
   Music,
@@ -180,6 +181,28 @@ export default function App() {
     }));
   };
 
+  // Handle Load Synthesized Offline Demo Audio
+  const handleLoadDemoAudio = async () => {
+    try {
+      const demo = await generateDemoRhythmAudioBlob(24);
+      setAudioBlob(demo.blob);
+      const url = URL.createObjectURL(demo.blob);
+      if (audioRef.current) {
+        audioRef.current.src = url;
+        audioRef.current.load();
+      }
+      setDurationMs(demo.durationMs);
+      setProject((prev) => ({
+        ...prev,
+        audioUrl: url,
+        audioFileName: demo.fileName,
+        audioDurationMs: demo.durationMs,
+      }));
+    } catch (e) {
+      console.error('Failed to generate demo audio', e);
+    }
+  };
+
   // Custom Font Uploaded
   const handleCustomFontUploaded = (name: string, family: string) => {
     setProject((prev) => ({
@@ -302,6 +325,8 @@ export default function App() {
               setActiveTab('preview');
             }}
             onNavigateToTab={(t) => setActiveTab(t)}
+            onLoadDemoAudio={handleLoadDemoAudio}
+            onAudioUpload={handleAudioUpload}
           />
         )}
 
@@ -316,6 +341,7 @@ export default function App() {
             onTogglePlay={handleTogglePlay}
             audioBlob={audioBlob}
             onAudioUpload={handleAudioUpload}
+            onLoadDemoAudio={handleLoadDemoAudio}
             playbackRate={playbackRate}
             onChangePlaybackRate={setPlaybackRate}
             volume={volume}
@@ -376,6 +402,8 @@ export default function App() {
             onTogglePlay={handleTogglePlay}
             audioBlob={audioBlob}
             onNavigateToTab={(t) => setActiveTab(t)}
+            onAudioUpload={handleAudioUpload}
+            onLoadDemoAudio={handleLoadDemoAudio}
           />
         )}
 
@@ -430,9 +458,9 @@ export default function App() {
       <nav className="h-16 bg-slate-900 border-t border-slate-800 flex items-center justify-around px-1 z-20 shrink-0 select-none">
         {[
           { id: 'home', label: 'Home', icon: Home },
+          { id: 'song', label: 'Audio', icon: Music },
           { id: 'lyrics', label: 'Lyrics', icon: FileText },
           { id: 'sync', label: 'Sync', icon: Sliders },
-          { id: 'words', label: 'Words', icon: Sparkles },
           { id: 'auto_animate', label: '✨ Auto', icon: Zap },
           { id: 'design', label: 'Design', icon: Palette },
           { id: 'preview', label: 'Preview', icon: Play },

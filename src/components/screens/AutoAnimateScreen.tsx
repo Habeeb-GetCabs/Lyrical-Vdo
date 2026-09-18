@@ -25,6 +25,8 @@ import {
   RotateCcw,
   Layers,
   Music,
+  Upload,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface AutoAnimateScreenProps {
@@ -37,6 +39,8 @@ interface AutoAnimateScreenProps {
   onTogglePlay: () => void;
   audioBlob: Blob | null;
   onNavigateToTab: (tab: any) => void;
+  onAudioUpload?: (file: File) => void;
+  onLoadDemoAudio?: () => void;
 }
 
 const PRESETS: {
@@ -97,7 +101,10 @@ export const AutoAnimateScreen: React.FC<AutoAnimateScreenProps> = ({
   onTogglePlay,
   audioBlob,
   onNavigateToTab,
+  onAudioUpload,
+  onLoadDemoAudio,
 }) => {
+  const audioFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [activePreset, setActivePreset] = useState<AutoAnimationPreset>(
     project.autoAnimationConfig?.preset || 'dynamic'
@@ -273,6 +280,74 @@ export const AutoAnimateScreen: React.FC<AutoAnimateScreenProps> = ({
               <span>{isAnalyzing ? 'Analyzing...' : 'Regenerate Animation'}</span>
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* STEP 1: LOAD YOUR SONG (Audio Track Selector) */}
+      <div className="bg-slate-900/90 rounded-2xl border border-slate-800 p-4 sm:p-5 space-y-3.5 shadow-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-violet-600/20 border border-violet-500/40 flex items-center justify-center text-violet-400">
+              <Music className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                <span>1. Audio Track & Song</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+                  Offline
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Current:{' '}
+                <strong className="text-amber-300 font-medium">{project.audioFileName}</strong> (
+                {formatTime(durationMs)})
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onTogglePlay}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold border border-slate-700 transition active:scale-95"
+            >
+              {isPlaying ? <Pause className="w-3.5 h-3.5 text-amber-400" /> : <Play className="w-3.5 h-3.5 text-emerald-400" />}
+              <span>{isPlaying ? 'Pause' : 'Play Audio'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* The Two Choices: Select MP3 / Audio vs Load Demo Audio */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <button
+            onClick={() => audioFileInputRef.current?.click()}
+            className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold shadow-md shadow-violet-600/25 transition active:scale-[0.98]"
+          >
+            <Upload className="w-4 h-4 text-violet-200" />
+            <span>Select MP3 / Audio</span>
+          </button>
+
+          {onLoadDemoAudio && (
+            <button
+              onClick={onLoadDemoAudio}
+              className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/25 transition active:scale-[0.98]"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>Load Demo Audio</span>
+            </button>
+          )}
+
+          <input
+            ref={audioFileInputRef}
+            type="file"
+            accept="audio/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f && onAudioUpload) {
+                onAudioUpload(f);
+              }
+            }}
+          />
         </div>
       </div>
 

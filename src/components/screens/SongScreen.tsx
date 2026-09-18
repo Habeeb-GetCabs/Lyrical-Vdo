@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { ProjectData } from '../../types/project';
 import { WaveformEditor } from '../waveform/WaveformEditor';
-import { Music, Upload, CheckCircle2, Volume2, Gauge, Disc } from 'lucide-react';
+import { Music, Upload, CheckCircle2, Volume2, Gauge, Disc, Sparkles } from 'lucide-react';
 
 interface SongScreenProps {
   project: ProjectData;
@@ -13,6 +13,7 @@ interface SongScreenProps {
   onTogglePlay: () => void;
   audioBlob: Blob | null;
   onAudioUpload: (file: File) => void;
+  onLoadDemoAudio?: () => void;
   playbackRate: number;
   onChangePlaybackRate: (rate: number) => void;
   volume: number;
@@ -29,6 +30,7 @@ export const SongScreen: React.FC<SongScreenProps> = ({
   onTogglePlay,
   audioBlob,
   onAudioUpload,
+  onLoadDemoAudio,
   playbackRate,
   onChangePlaybackRate,
   volume,
@@ -97,13 +99,25 @@ export const SongScreen: React.FC<SongScreenProps> = ({
           </span>
         </div>
 
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold flex items-center justify-center gap-2 border border-slate-700 transition active:scale-[0.99]"
-        >
-          <Upload className="w-4 h-4 text-violet-400" />
-          <span>Upload Audio File (MP3, WAV, M4A, FLAC)</span>
-        </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full py-3 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-lg shadow-violet-600/20 transition active:scale-[0.99]"
+          >
+            <Upload className="w-4 h-4 text-white" />
+            <span>Select MP3 / Audio</span>
+          </button>
+
+          {onLoadDemoAudio && (
+            <button
+              onClick={onLoadDemoAudio}
+              className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition active:scale-[0.99]"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>Load Demo Audio</span>
+            </button>
+          )}
+        </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -113,7 +127,7 @@ export const SongScreen: React.FC<SongScreenProps> = ({
         />
 
         <p className="text-[11px] text-slate-500">
-          Audio is decoded locally in your browser and will play offline.
+          Audio is decoded 100% locally in your device/browser and will play offline.
         </p>
       </div>
 

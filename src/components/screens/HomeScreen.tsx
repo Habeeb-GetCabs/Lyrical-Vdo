@@ -19,11 +19,19 @@ import {
 interface HomeScreenProps {
   onOpenProject: (project: ProjectData) => void;
   onNavigateToTab: (tab: any) => void;
+  onLoadDemoAudio?: () => void;
+  onAudioUpload?: (file: File) => void;
 }
 
-export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenProject, onNavigateToTab }) => {
+export const HomeScreen: React.FC<HomeScreenProps> = ({
+  onOpenProject,
+  onNavigateToTab,
+  onLoadDemoAudio,
+  onAudioUpload,
+}) => {
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [loading, setLoading] = useState(true);
+  const homeAudioInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const loadProjects = async () => {
     setLoading(true);
@@ -117,6 +125,27 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenProject, onNavigat
             <span>Import Project (.json)</span>
             <input type="file" accept=".json" onChange={handleImportJson} className="hidden" />
           </label>
+
+          <button
+            onClick={() => onNavigateToTab('song')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-600/30 hover:bg-violet-600/50 text-violet-200 text-xs font-medium border border-violet-500/40 transition"
+          >
+            <Music className="w-3.5 h-3.5 text-violet-400" />
+            <span>Audio & Song Setup</span>
+          </button>
+
+          {onLoadDemoAudio && (
+            <button
+              onClick={() => {
+                onLoadDemoAudio();
+                onNavigateToTab('auto_animate');
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 text-xs font-medium border border-emerald-500/40 transition"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Load Demo Audio</span>
+            </button>
+          )}
 
           <button
             onClick={() => onNavigateToTab('ci_guide')}
