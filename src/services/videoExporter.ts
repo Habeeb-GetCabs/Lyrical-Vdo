@@ -5,7 +5,15 @@ export interface ExportProgress {
   currentTimeMs: number;
   totalDurationMs: number;
   status: 'rendering' | 'encoding' | 'completed' | 'error' | 'cancelled';
+  frameIndex?: number;
+  totalFrames?: number;
+  secondsRemaining?: number;
   error?: string;
+}
+
+export interface ExportOptions {
+  maxDurationMs?: number;
+  onFrameRendered?: (canvas: HTMLCanvasElement) => void;
 }
 
 export class VideoExporter {
@@ -18,13 +26,19 @@ export class VideoExporter {
   public async exportVideo(
     project: ProjectData,
     audioElement: HTMLAudioElement | null,
-    onProgress: (prog: ExportProgress) => void
+    onProgress: (prog: ExportProgress) => void,
+    options?: ExportOptions
   ): Promise<Blob> {
     this.isCancelled = false;
     const width = project.exportResolution === '1080p' ? 1080 : 720;
     const height = project.exportResolution === '1080p' ? 1920 : 1280;
     const fps = 30;
-    const totalDurationMs = Math.max(5000, project.audioDurationMs || 30000);
+    
+    // Determine target total duration
+    const projectDuration = project.audioDurationMs || 30000;
+    const totalDurationMs = options?.maxDurationMs
+      ? Math.min(options.maxDurationMs, projectDuration)
+      : Math.max(5000, projectDuration);
 
     // Setup canvas
     const canvas = document.createElement('canvas');
@@ -35,43 +49,66 @@ export class VideoExporter {
       throw new Error('Could not initialize 2D canvas context');
     }
 
-    // Load background image if applicable
+    // Load background image with 1.5s timeout (never hang the export)
     let bgImage: HTMLImageElement | null = null;
     if (project.background.type === 'image' && project.background.mediaUrl) {
       try {
-        bgImage = await new Promise<HTMLImageElement>((resolve, reject) => {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.onload = () => resolve(img);
-          img.onerror = () => reject(new Error('Failed to load background image for video export'));
-          img.src = project.background.mediaUrl!;
-        });
-      } catch (e) {
-        console.warn('Background image could not be loaded for video export, fallback to gradient', e);
+        bgImage = await Promise.race([
+          new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error('Image failed to load'));
+            img.src = project.background.mediaUrl!;
+          }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+        ]);
+      } catch {
+        bgImage = null;
       }
+    }
+
+    // Pre-render the very first frame onto canvas so captureStream has initial bitmap data
+    drawLyricFrame(ctx, width, height, project, 0, bgImage);
+    if (options?.onFrameRendered) {
+      options.onFrameRendered(canvas);
     }
 
     // Setup Web Audio mixing for stream if audio is present
     let audioStreamTrack: MediaStreamTrack | null = null;
     let audioContext: AudioContext | null = null;
-    let audioSourceNode: MediaElementAudioSourceNode | null = null;
 
-    if (audioElement && audioElement.src) {
+    if (audioElement && audioElement.src && audioElement.src !== '') {
       try {
-        const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        audioContext = new AudioContextClass();
-        const dest = audioContext.createMediaStreamDestination();
-        // Check if media element already has a source connected or create one
-        try {
-          audioSourceNode = audioContext.createMediaElementSource(audioElement);
-          audioSourceNode.connect(dest);
-          audioSourceNode.connect(audioContext.destination);
-        } catch (_) {
-          // In some browsers or repeated calls, createMediaElementSource throws if already created
+        const anyAudio = audioElement as any;
+        if (typeof anyAudio.captureStream === 'function') {
+          const stream = anyAudio.captureStream();
+          audioStreamTrack = stream.getAudioTracks()[0] || null;
+        } else if (typeof anyAudio.mozCaptureStream === 'function') {
+          const stream = anyAudio.mozCaptureStream();
+          audioStreamTrack = stream.getAudioTracks()[0] || null;
         }
-        audioStreamTrack = dest.stream.getAudioTracks()[0] || null;
-      } catch (err) {
-        console.warn('Could not capture audio stream for recording:', err);
+      } catch (_) {}
+
+      if (!audioStreamTrack) {
+        try {
+          const AudioContextClass =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+          audioContext = new AudioContextClass();
+          if (audioContext.state === 'suspended') {
+            await audioContext.resume().catch(() => {});
+          }
+          const dest = audioContext.createMediaStreamDestination();
+          try {
+            const audioSourceNode = audioContext.createMediaElementSource(audioElement);
+            audioSourceNode.connect(dest);
+            audioSourceNode.connect(audioContext.destination);
+          } catch (_) {}
+          audioStreamTrack = dest.stream.getAudioTracks()[0] || null;
+        } catch (err) {
+          console.warn('Audio capture warning (continuing video export):', err);
+        }
       }
     }
 
@@ -88,6 +125,7 @@ export class VideoExporter {
       'video/webm;codecs=vp9,opus',
       'video/webm;codecs=vp8,opus',
       'video/webm',
+      'video/mp4;codecs=avc1,mp4a',
       'video/mp4',
     ];
     let selectedMime = '';
@@ -112,26 +150,27 @@ export class VideoExporter {
 
     mediaRecorder.start(200);
 
-    // Render loop
-    const frameIntervalMs = 1000 / fps;
-    let currentMs = 0;
-
-    // Play real audio if available
-    if (audioElement) {
+    // Play audio if available, but DO NOT DEPEND on it for timing
+    if (audioElement && audioElement.src && audioElement.src !== '') {
       audioElement.currentTime = 0;
       audioElement.play().catch(() => {});
     }
+
+    const renderStartTime = performance.now();
+    let currentMs = 0;
+    const totalFrames = Math.max(1, Math.round((totalDurationMs / 1000) * fps));
 
     const renderPromise = new Promise<Blob>((resolve, reject) => {
       mediaRecorder.onstop = () => {
         const outputBlob = new Blob(recordedChunks, { type: selectedMime || 'video/webm' });
         resolve(outputBlob);
       };
+
       mediaRecorder.onerror = (e) => reject(e);
 
       const loop = () => {
         if (this.isCancelled) {
-          mediaRecorder.stop();
+          if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
           if (audioElement) audioElement.pause();
           onProgress({
             progress: currentMs / totalDurationMs,
@@ -143,32 +182,60 @@ export class VideoExporter {
           return;
         }
 
-        // Advance time
-        if (audioElement && !audioElement.paused) {
-          currentMs = Math.round(audioElement.currentTime * 1000);
-        } else {
-          currentMs += frameIntervalMs;
-        }
+        try {
+          const now = performance.now();
+          // STRICT MONOTONIC PROGRESSION: Time is derived directly from performance.now()
+          // This guarantees it can NEVER freeze at 0% even if the audio element stalls
+          const elapsed = now - renderStartTime;
+          currentMs = Math.min(totalDurationMs, elapsed);
 
-        // Render Frame
-        drawLyricFrame(ctx, width, height, project, currentMs, bgImage);
+          // Render Frame
+          drawLyricFrame(ctx, width, height, project, currentMs, bgImage);
+          if (options?.onFrameRendered) {
+            options.onFrameRendered(canvas);
+          }
 
-        // Notify progress
-        const progressVal = Math.min(1, currentMs / totalDurationMs);
-        onProgress({
-          progress: progressVal,
-          currentTimeMs: currentMs,
-          totalDurationMs,
-          status: progressVal >= 1 ? 'encoding' : 'rendering',
-        });
+          // Calculate progress and remaining time
+          const progressVal = Math.min(1, currentMs / totalDurationMs);
+          const currentFrame = Math.min(totalFrames, Math.round((currentMs / 1000) * fps));
+          const secondsRemaining = Math.max(0, Math.round((totalDurationMs - currentMs) / 1000));
 
-        if (currentMs < totalDurationMs) {
-          requestAnimationFrame(loop);
-        } else {
+          onProgress({
+            progress: progressVal,
+            currentTimeMs: currentMs,
+            totalDurationMs,
+            frameIndex: currentFrame,
+            totalFrames,
+            secondsRemaining,
+            status: progressVal >= 1 ? 'encoding' : 'rendering',
+          });
+
+          if (currentMs < totalDurationMs) {
+            requestAnimationFrame(loop);
+          } else {
+            if (audioElement) audioElement.pause();
+            if (mediaRecorder.state !== 'inactive') {
+              mediaRecorder.stop();
+            }
+          }
+        } catch (err) {
+          console.error('Render error:', err);
           if (audioElement) audioElement.pause();
-          mediaRecorder.stop();
+          if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+          reject(err);
         }
       };
+
+      // Initial progress trigger
+      onProgress({
+        progress: 0.01,
+        currentTimeMs: 0,
+        totalDurationMs,
+        frameIndex: 1,
+        totalFrames,
+        secondsRemaining: Math.round(totalDurationMs / 1000),
+        status: 'rendering',
+      });
 
       requestAnimationFrame(loop);
     });
@@ -178,6 +245,9 @@ export class VideoExporter {
       progress: 1,
       currentTimeMs: totalDurationMs,
       totalDurationMs,
+      frameIndex: totalFrames,
+      totalFrames,
+      secondsRemaining: 0,
       status: 'completed',
     });
     return result;

@@ -30,18 +30,50 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const [exportedVideoUrl, setExportedVideoUrl] = useState<string | null>(null);
   const [exporterInstance, setExporterInstance] = useState<VideoExporter | null>(null);
+  const [exportDurationChoice, setExportDurationChoice] = useState<'15s' | '30s' | 'full'>('30s');
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const previewCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
 
   // Trigger Video Export
   const handleStartVideoExport = async () => {
     setIsExportingVideo(true);
     setExportedVideoUrl(null);
+    setRenderError(null);
+    setExportProgress({
+      progress: 0.01,
+      currentTimeMs: 0,
+      totalDurationMs: 30000,
+      status: 'rendering',
+    });
+
     const exporter = new VideoExporter();
     setExporterInstance(exporter);
 
+    let maxDurationMs: number | undefined = undefined;
+    if (exportDurationChoice === '15s') maxDurationMs = 15000;
+    else if (exportDurationChoice === '30s') maxDurationMs = 30000;
+    else maxDurationMs = project.audioDurationMs || 30000;
+
     try {
-      const blob = await exporter.exportVideo(project, audioElement, (prog) => {
-        setExportProgress(prog);
-      });
+      const blob = await exporter.exportVideo(
+        project,
+        audioElement,
+        (prog) => {
+          setExportProgress(prog);
+        },
+        {
+          maxDurationMs,
+          onFrameRendered: (canvas) => {
+            const pCanvas = previewCanvasRef.current;
+            if (pCanvas) {
+              const pCtx = pCanvas.getContext('2d');
+              if (pCtx) {
+                pCtx.drawImage(canvas, 0, 0, pCanvas.width, pCanvas.height);
+              }
+            }
+          },
+        }
+      );
 
       const url = URL.createObjectURL(blob);
       setExportedVideoUrl(url);
@@ -55,7 +87,7 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({
       document.body.removeChild(a);
     } catch (err: any) {
       if (err.message !== 'Export cancelled by user') {
-        alert(`Export error: ${err.message || 'Unknown error'}`);
+        setRenderError(err.message || 'Video encoding failed');
       }
     } finally {
       setIsExportingVideo(false);
@@ -157,6 +189,30 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({
           </div>
         </div>
 
+        {/* Video Clip Length Selector */}
+        <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
+          <span className="text-slate-400">Video Length</span>
+          <div className="flex gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            {[
+              { id: '15s', label: '15s Reel' },
+              { id: '30s', label: '30s Status' },
+              { id: 'full', label: 'Full Audio' },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => setExportDurationChoice(opt.id as any)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                  exportDurationChoice === opt.id
+                    ? 'bg-amber-400 text-slate-950 shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Animation Mode Selector: Option A vs Option B */}
         <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
           <span className="text-slate-400">Animation Mode</span>
@@ -185,30 +241,76 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({
           </div>
         </div>
 
-        {/* Export Progress Bar */}
+        {/* Error notification if render fails */}
+        {renderError && (
+          <div className="p-3 bg-rose-950/50 rounded-xl border border-rose-800/50 text-xs text-rose-300 space-y-1">
+            <div className="font-bold flex items-center gap-1.5 text-rose-200">
+              <span>Render Notice:</span>
+            </div>
+            <p>{renderError}</p>
+            <p className="text-slate-400 text-[11px] pt-1">
+              Tip: On mobile devices, selecting &quot;15s Reel&quot; or &quot;30s Status&quot; at 720p finishes very fast.
+            </p>
+          </div>
+        )}
+
+        {/* Export Progress Bar with Live Mini Preview Canvas */}
         {isExportingVideo && exportProgress && (
-          <div className="space-y-2 pt-2 border-t border-slate-800">
+          <div className="space-y-3 pt-2 border-t border-slate-800 bg-slate-950/70 p-3 rounded-xl border">
+            {/* Live Preview Canvas */}
+            <div className="flex flex-col items-center gap-1.5">
+              <div className="relative w-24 h-40 bg-black rounded-lg overflow-hidden border border-amber-500/30 shadow-lg shadow-amber-500/10 flex items-center justify-center">
+                <canvas
+                  ref={previewCanvasRef}
+                  width={180}
+                  height={320}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-[9px] font-mono text-amber-300 font-bold border border-amber-500/40">
+                  LIVE
+                </div>
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">Live Frame Generator</span>
+            </div>
+
             <div className="flex items-center justify-between text-xs">
               <span className="text-amber-400 font-medium capitalize flex items-center gap-1.5">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 {exportProgress.status === 'encoding' ? 'Finalizing encoding...' : 'Rendering video frames...'}
               </span>
-              <span className="text-slate-300 font-mono font-bold">
+              <span className="text-slate-200 font-mono font-bold text-sm">
                 {Math.round(exportProgress.progress * 100)}%
               </span>
             </div>
 
-            <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden">
+            {/* Frame & Time Counter */}
+            <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+              <span>
+                {exportProgress.frameIndex ? `Frame ${exportProgress.frameIndex}` : ''}
+                {exportProgress.totalFrames ? ` / ${exportProgress.totalFrames}` : ''}
+              </span>
+              <span>
+                {exportProgress.secondsRemaining !== undefined && exportProgress.secondsRemaining > 0
+                  ? `~${exportProgress.secondsRemaining}s remaining`
+                  : 'Wrapping up...'}
+              </span>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="w-full h-3 rounded-full bg-slate-800 overflow-hidden p-0.5">
               <div
-                className="h-full bg-gradient-to-r from-violet-500 to-amber-400 transition-all duration-150"
-                style={{ width: `${Math.round(exportProgress.progress * 100)}%` }}
+                className="h-full rounded-full bg-gradient-to-r from-violet-500 via-amber-400 to-emerald-400 transition-all duration-100 shadow-sm"
+                style={{ width: `${Math.max(4, Math.round(exportProgress.progress * 100))}%` }}
               />
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-between items-center pt-1">
+              <span className="text-[10px] text-slate-500">
+                Processed locally in browser
+              </span>
               <button
                 onClick={handleCancelVideoExport}
-                className="text-[11px] text-slate-400 hover:text-rose-400 flex items-center gap-1"
+                className="text-[11px] text-slate-400 hover:text-rose-400 flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800"
               >
                 <X className="w-3 h-3" />
                 Cancel Render
