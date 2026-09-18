@@ -1,0 +1,21 @@
+# Android & Gradle
+.gradle/
+build/
+*/build/
+*.apk
+*.aab
+local.properties
+.idea/
+*.iml
+.cxx/
+captures/
+.externalNativeBuild/
+
+# Web Studio / Node
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example

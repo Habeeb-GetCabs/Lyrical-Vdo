@@ -1,0 +1,6 @@
+{
+  "name": "AI Lyric Video Maker",
+  "description": "Native Android app and interactive creator studio for generating stylish synchronized lyric videos with custom Tamil/English fonts, audio waveforms, tap-to-sync, and animated previews.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

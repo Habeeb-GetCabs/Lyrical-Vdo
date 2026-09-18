@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">AI Lyric Video Maker</string>
+    <string name="title_background">Background</string>
+    <string name="title_lyrics">Lyrics</string>
+    <string name="title_audio">Audio</string>
+    <string name="title_font">Font</string>
+    <string name="title_timeline">Timeline &amp; Sync</string>
+    <string name="title_preview">Live Preview</string>
+    <string name="btn_upload_background">Upload Background</string>
+    <string name="btn_upload_audio">Upload Audio</string>
+    <string name="btn_upload_font">Upload Font (.TTF / .OTF)</string>
+    <string name="btn_start_tap_sync">Start Tap to Sync</string>
+    <string name="lyrics_placeholder">Paste or type your Tamil or English lyrics here…\nExample:\nகண்ணே கலைமானே கன்னி மயிலென\nகண்டேன் உனை நானே\nSweet melody plays in the night\nLoving hearts shining bright</string>
+</resources>
