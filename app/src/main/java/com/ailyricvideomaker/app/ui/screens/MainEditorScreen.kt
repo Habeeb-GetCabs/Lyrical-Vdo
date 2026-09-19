@@ -1616,8 +1616,8 @@ fun VideoSectionContent(
                                         )
                                         Text(
                                             text = when (option) {
-                                                VideoDurationOption.SECONDS_30 -> "Ideal for Instagram Reels, Shorts, and TikTok (30s limit)"
-                                                VideoDurationOption.SECONDS_60 -> "Standard format for 1-minute social stories and reels"
+                                                VideoDurationOption.THIRTY_SECONDS -> "Ideal for Instagram Reels, Shorts, and TikTok (30s limit)"
+                                                VideoDurationOption.SIXTY_SECONDS -> "Standard format for 1-minute social stories and reels"
                                                 VideoDurationOption.FULL_SONG -> "Renders full audio duration without cutting off"
                                             },
                                             color = Slate400,

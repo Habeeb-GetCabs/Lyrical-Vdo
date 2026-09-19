@@ -283,8 +283,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* Secondary Top Sub-Navigation for desktop/tablet */}
-      <div className="hidden md:flex h-10 bg-slate-900/60 border-b border-slate-800/60 px-4 items-center gap-1 overflow-x-auto text-xs shrink-0">
+      {/* Secondary Top Sub-Navigation for all screen sizes (horizontally scrollable on mobile) */}
+      <div className="flex h-11 bg-slate-900/60 border-b border-slate-800/60 px-4 items-center gap-1.5 overflow-x-auto text-xs shrink-0 scrollbar-none scroll-smooth">
         {[
           { id: 'home', label: 'Home', icon: Home },
           { id: 'song', label: 'Song & Audio', icon: Music },
@@ -465,8 +465,8 @@ export default function App() {
         {activeTab === 'ci_guide' && <CIGuideScreen />}
       </main>
 
-      {/* Mobile Bottom Navigation Bar */}
-      <nav className="h-16 bg-slate-900 border-t border-slate-800 flex items-center justify-around px-1 z-20 shrink-0 select-none">
+      {/* Mobile Bottom Navigation Bar (Hidden on desktop) */}
+      <nav className="md:hidden h-16 bg-slate-900 border-t border-slate-800 flex items-center justify-around px-1 z-20 shrink-0 select-none">
         {[
           { id: 'home', label: 'Home', icon: Home },
           { id: 'song', label: 'Audio', icon: Music },
