@@ -11,6 +11,7 @@ import { PreviewScreen } from './components/screens/PreviewScreen';
 import { ExportScreen } from './components/screens/ExportScreen';
 import { CIGuideScreen } from './components/screens/CIGuideScreen';
 import { AutoAnimateScreen } from './components/screens/AutoAnimateScreen';
+import { AIVisualDesignerScreen } from './components/screens/AIVisualDesignerScreen';
 import { PWAInstallButton } from './components/pwa/PWAInstallButton';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { generateDemoRhythmAudioBlob } from './services/demoAudioGenerator';
@@ -36,6 +37,7 @@ export type TabType =
   | 'words'
   | 'auto_animate'
   | 'design'
+  | 'ai_designer'
   | 'preview'
   | 'export'
   | 'ci_guide';
@@ -291,6 +293,7 @@ export default function App() {
           { id: 'words', label: 'Word Karaoke', icon: Sparkles },
           { id: 'auto_animate', label: '✨ Auto Animate', icon: Zap },
           { id: 'design', label: 'Designer & Fonts', icon: Palette },
+          { id: 'ai_designer', label: '✨ AI Tamil Designer', icon: Sparkles },
           { id: 'preview', label: 'Live Preview', icon: Play },
           { id: 'export', label: 'Export Video', icon: Download },
         ].map((tab) => {
@@ -426,6 +429,14 @@ export default function App() {
               }))
             }
             onCustomFontUploaded={handleCustomFontUploaded}
+          />
+        )}
+
+        {activeTab === 'ai_designer' && (
+          <AIVisualDesignerScreen
+            project={project}
+            onUpdateProject={(upd) => setProject((prev) => ({ ...prev, ...upd }))}
+            onNavigateToTab={(t) => setActiveTab(t)}
           />
         )}
 

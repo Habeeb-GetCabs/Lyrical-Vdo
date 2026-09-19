@@ -1,6 +1,8 @@
-import React, { useRef, useEffect } from 'react';
-import { ProjectData } from '../../types/project';
+import React, { useRef, useEffect, useState } from 'react';
+import { ProjectData, ColorPalettePreset, COLOR_PALETTE_PRESETS, MusicVisualizerType } from '../../types/project';
 import { WaveformEditor } from '../waveform/WaveformEditor';
+import { MusicVisualizerRenderer } from '../../services/musicVisualizerRenderer';
+import { AILyricVisualDesigner } from '../../services/aiLyricVisualDesigner';
 import {
   Play,
   Pause,
@@ -12,6 +14,11 @@ import {
   Sparkles,
   Download,
   Sliders,
+  Palette,
+  Music,
+  Zap,
+  Moon,
+  RefreshCw,
 } from 'lucide-react';
 
 interface PreviewScreenProps {
@@ -38,23 +45,65 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
   onUpdateProject,
 }) => {
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const visualizerCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const { textStyle, animationStyle, background } = project;
   const isAutoMode = project.animationMode === 'auto';
   const autoConfig = project.autoAnimationConfig;
+  const aiDesigner = project.aiDesignerConfig;
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   // Find active line
   const activeLineIndex = project.lyrics.findIndex(
     (l) => currentTimeMs >= l.startTimeMs && currentTimeMs <= l.endTimeMs
   );
   const activeLine = activeLineIndex !== -1 ? project.lyrics[activeLineIndex] : null;
+  const activeLineDesign = activeLine && aiDesigner?.lines ? aiDesigner.lines[activeLine.id] : null;
 
   // Active line auto-animation config
   const lineAutoAnim =
     isAutoMode && activeLine && autoConfig?.timeline
       ? autoConfig.timeline.find((t) => t.lineId === activeLine.id)
       : null;
+
+  // Real-time canvas music visualizer rendering (active during gaps & subtle in background)
+  useEffect(() => {
+    const canvas = visualizerCanvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (aiDesigner) {
+      const isGap = !activeLine;
+      const shouldRender = isGap || aiDesigner.visualizerPosition === 'bottom';
+
+      if (shouldRender) {
+        MusicVisualizerRenderer.render({
+          ctx,
+          width: canvas.width,
+          height: canvas.height,
+          timeMs: currentTimeMs,
+          visualizerType: aiDesigner.activeVisualizer,
+          primaryColor: aiDesigner.primaryColor,
+          accentColor: aiDesigner.accentColor,
+          glowColor: aiDesigner.glowColor,
+          energy: aiDesigner.visualEnergy,
+          position: aiDesigner.visualizerPosition,
+          opacity: isGap ? 0.95 : 0.28,
+          isGap,
+        });
+      }
+    }
+  }, [currentTimeMs, isPlaying, activeLine, aiDesigner]);
 
   // Compute CSS animation class for the active line
   let animationClass = '';
@@ -99,6 +148,78 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
     else if (animationStyle === 'ZOOM' || animationStyle === 'SCALE') animationClass = 'animate-zoom';
     else if (animationStyle === 'BOUNCE') animationClass = 'animate-bounce';
   }
+
+  // Camera Motion calculations for background image
+  const motion = aiDesigner?.backgroundMotion;
+  const songProgress = Math.min(1, Math.max(0, currentTimeMs / (durationMs || 30000)));
+  let bgTransform = 'scale(1.0)';
+  if (motion) {
+    const beatBump = Math.sin((currentTimeMs / 1000) * 4) > 0.85 ? 0.02 : 0;
+    if (motion.type === 'SLOW_ZOOM_IN') {
+      bgTransform = `scale(${1.0 + songProgress * 0.12 + beatBump})`;
+    } else if (motion.type === 'SLOW_ZOOM_OUT') {
+      bgTransform = `scale(${1.12 - songProgress * 0.12 + beatBump})`;
+    } else if (motion.type === 'PAN_HORIZONTAL') {
+      const panX = Math.sin(songProgress * Math.PI * 2) * 18;
+      bgTransform = `scale(1.08) translateX(${panX}px)`;
+    } else if (motion.type === 'PAN_VERTICAL') {
+      const panY = Math.sin(songProgress * Math.PI * 2) * 18;
+      bgTransform = `scale(1.08) translateY(${panY}px)`;
+    } else {
+      bgTransform = `scale(${1.04 + beatBump * 1.4})`;
+    }
+  }
+
+  // Quick Action AI handlers
+  const handleQuickAIGenerate = () => {
+    if (!onUpdateProject) return;
+    const newConfig = AILyricVisualDesigner.generateDesign(project);
+    onUpdateProject({ aiDesignerConfig: newConfig });
+    showToast('✨ AI Cinematic Design regenerated!');
+  };
+
+  const handleQuickCycleColors = () => {
+    if (!onUpdateProject || !aiDesigner) return;
+    const palettes = Object.keys(COLOR_PALETTE_PRESETS) as ColorPalettePreset[];
+    const nextPal = palettes[(palettes.indexOf(aiDesigner.colorPalette) + 1) % palettes.length];
+    const updated = AILyricVisualDesigner.regenerateColors(aiDesigner, nextPal);
+    onUpdateProject({ aiDesignerConfig: updated });
+    showToast(`🎨 Color Palette: ${COLOR_PALETTE_PRESETS[nextPal].name}`);
+  };
+
+  const handleQuickCycleVisualizer = () => {
+    if (!onUpdateProject || !aiDesigner) return;
+    const allVis: MusicVisualizerType[] = [
+      'WAVEFORM',
+      'AUDIO_EQUALIZER',
+      'CIRCULAR_EQUALIZER',
+      'AUDIO_RINGS',
+      'PARTICLE_PULSE',
+      'GLOW_PULSE',
+      'BASS_PULSE',
+      'EDGE_VISUALIZER',
+      'WAVE_LINES',
+      'MINIMAL_DOT_VISUALIZER',
+    ];
+    const nextVis = allVis[(allVis.indexOf(aiDesigner.activeVisualizer) + 1) % allVis.length];
+    const updated = AILyricVisualDesigner.regenerateVisualizer(aiDesigner, nextVis);
+    onUpdateProject({ aiDesignerConfig: updated });
+    showToast(`🎵 Visualizer: ${nextVis.replace('_', ' ')}`);
+  };
+
+  const handleQuickDynamic = () => {
+    if (!onUpdateProject || !aiDesigner) return;
+    const updated = AILyricVisualDesigner.setVisualEnergy(aiDesigner, 90);
+    onUpdateProject({ aiDesignerConfig: updated });
+    showToast('⚡ Dynamic Mode: 90% energy');
+  };
+
+  const handleQuickCinematic = () => {
+    if (!onUpdateProject || !aiDesigner) return;
+    const updated = AILyricVisualDesigner.setVisualEnergy(aiDesigner, 35);
+    onUpdateProject({ aiDesignerConfig: updated });
+    showToast('🌙 Cinematic Mode: atmospheric float');
+  };
 
   // Toggle fullscreen on video card
   const toggleFullscreen = () => {
@@ -183,15 +304,16 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
         ref={containerRef}
         className="relative flex-1 min-h-[360px] max-h-[580px] w-full bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center select-none"
       >
-        {/* Background Image / Color */}
+        {/* Background Image / Color with Cinematic Camera Motion */}
         {background.type === 'image' && background.mediaUrl ? (
           <img
             src={background.mediaUrl}
             alt="Background"
-            className="absolute inset-0 w-full h-full object-cover transition-all"
+            className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 ease-out"
             style={{
               filter: background.blur > 0 ? `blur(${background.blur}px)` : 'none',
               opacity: background.opacity,
+              transform: bgTransform,
             }}
           />
         ) : (
@@ -212,9 +334,17 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
           }}
         />
 
+        {/* Real-time Music Visualizer Canvas (Active in Instrumental Gaps) */}
+        <canvas
+          ref={visualizerCanvasRef}
+          width={360}
+          height={640}
+          className="absolute inset-0 w-full h-full pointer-events-none z-5"
+        />
+
         {/* Synchronized Animated Lyric Typography */}
         <div
-          className={`absolute inset-x-6 z-10 pointer-events-none flex flex-col transition-all duration-200 ${positionClasses}`}
+          className={`absolute inset-x-4 z-10 pointer-events-none flex flex-col transition-all duration-200 ${positionClasses}`}
           style={{
             ...customStyle,
             alignItems:
@@ -226,81 +356,238 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
           }}
         >
           {activeLine ? (
-            <div
-              key={activeLine.id}
-              className={`transition-all text-center ${animationClass}`}
-              style={{
-                fontFamily: textStyle.fontFamily,
-                fontSize: `${textStyle.fontSize}px`,
-                fontWeight: textStyle.fontWeight,
-                fontStyle: textStyle.isItalic ? 'italic' : 'normal',
-                letterSpacing: `${textStyle.letterSpacing}px`,
-                lineHeight: textStyle.lineSpacing,
-                textAlign: textStyle.alignment,
-                textShadow: textStyle.hasShadow
-                  ? `0 ${textStyle.shadowBlur / 3}px ${textStyle.shadowBlur}px ${
-                      textStyle.shadowColor || 'rgba(0,0,0,0.9)'
-                    }`
-                  : 'none',
-                WebkitTextStroke: textStyle.hasStroke
-                  ? `${textStyle.strokeWidth}px ${textStyle.strokeColor || '#000'}`
-                  : 'none',
-                ...autoDynamicStyle,
-              }}
-            >
-              {/* Karaoke Word-by-Word highlighting vs Line rendering */}
-              {activeLine.words && activeLine.words.length > 0 ? (
-                <span className="inline-flex flex-wrap justify-center gap-x-1.5">
-                  {activeLine.words.map((w) => {
-                    const isSung = currentTimeMs >= w.endTimeMs;
-                    const isCurrent =
-                      currentTimeMs >= w.startTimeMs && currentTimeMs < w.endTimeMs;
+            activeLineDesign && activeLineDesign.words && activeLineDesign.words.length > 0 ? (
+              /* AI Lyric Visual Designer Dynamic Tamil Typography */
+              <div
+                key={activeLine.id}
+                className={`transition-all text-center flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 px-2 ${animationClass}`}
+              >
+                {activeLineDesign.words.map((w, idx) => {
+                  const rawWordTimings = activeLine.words || [];
+                  const timing = rawWordTimings[idx];
+                  const lineProgress = Math.max(
+                    0,
+                    Math.min(
+                      1,
+                      (currentTimeMs - activeLine.startTimeMs) /
+                        (activeLine.endTimeMs - activeLine.startTimeMs)
+                    )
+                  );
+                  const isSung = timing
+                    ? currentTimeMs >= timing.endTimeMs
+                    : lineProgress > idx / activeLineDesign.words.length;
+                  const isCurrent = timing
+                    ? currentTimeMs >= timing.startTimeMs && currentTimeMs < timing.endTimeMs
+                    : lineProgress >= idx / activeLineDesign.words.length &&
+                      lineProgress < (idx + 1) / activeLineDesign.words.length;
 
-                    return (
-                      <span
-                        key={w.id}
-                        className="transition-colors duration-100"
-                        style={{
-                          color:
-                            isCurrent || isSung
-                              ? textStyle.highlightColor
-                              : textStyle.textColor,
-                        }}
-                      >
-                        {w.word}
-                      </span>
-                    );
-                  })}
-                </span>
-              ) : (
-                <span style={{ color: textStyle.textColor }}>{activeLine.text}</span>
-              )}
-            </div>
+                  let sizeClass = 'text-base font-bold';
+                  let pixelSize = 26;
+                  if (w.sizeTier === 'small') {
+                    sizeClass = 'text-xs sm:text-sm font-medium opacity-85';
+                    pixelSize = 19;
+                  } else if (w.sizeTier === 'large') {
+                    sizeClass = 'text-lg sm:text-2xl font-extrabold';
+                    pixelSize = 34;
+                  } else if (w.sizeTier === 'very_large') {
+                    sizeClass = 'text-2xl sm:text-3xl font-black scale-105';
+                    pixelSize = 42;
+                  }
+
+                  const activeColor =
+                    isCurrent || isSung
+                      ? aiDesigner?.accentColor || textStyle.highlightColor || '#F59E0B'
+                      : w.color || textStyle.textColor || '#FFFFFF';
+
+                  return (
+                    <span
+                      key={w.wordId || `w_${idx}`}
+                      className={`inline-block transition-all duration-100 ${sizeClass}`}
+                      style={{
+                        fontFamily: w.fontFamily || textStyle.fontFamily,
+                        fontSize: `${pixelSize}px`,
+                        color: activeColor,
+                        transform: `rotate(${w.rotationDeg}deg) scale(${isCurrent ? 1.12 : 1.0})`,
+                        textShadow:
+                          w.effect === 'glow' || isCurrent
+                            ? `0 0 16px ${aiDesigner?.glowColor || '#F59E0B'}, 0 3px 6px rgba(0,0,0,0.9)`
+                            : `0 2px 8px rgba(0,0,0,0.9)`,
+                        WebkitTextStroke: textStyle.hasStroke
+                          ? `${Math.max(1, textStyle.strokeWidth * 0.7)}px ${
+                              textStyle.strokeColor || '#000000'
+                            }`
+                          : 'none',
+                      }}
+                    >
+                      {w.word}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Standard / Manual / Auto Line rendering */
+              <div
+                key={activeLine.id}
+                className={`transition-all text-center ${animationClass}`}
+                style={{
+                  fontFamily: textStyle.fontFamily,
+                  fontSize: `${textStyle.fontSize}px`,
+                  fontWeight: textStyle.fontWeight,
+                  fontStyle: textStyle.isItalic ? 'italic' : 'normal',
+                  letterSpacing: `${textStyle.letterSpacing}px`,
+                  lineHeight: textStyle.lineSpacing,
+                  textAlign: textStyle.alignment,
+                  textShadow: textStyle.hasShadow
+                    ? `0 ${textStyle.shadowBlur / 3}px ${textStyle.shadowBlur}px ${
+                        textStyle.shadowColor || 'rgba(0,0,0,0.9)'
+                      }`
+                    : 'none',
+                  WebkitTextStroke: textStyle.hasStroke
+                    ? `${textStyle.strokeWidth}px ${textStyle.strokeColor || '#000'}`
+                    : 'none',
+                  ...autoDynamicStyle,
+                }}
+              >
+                {activeLine.words && activeLine.words.length > 0 ? (
+                  <span className="inline-flex flex-wrap justify-center gap-x-1.5">
+                    {activeLine.words.map((w) => {
+                      const isSung = currentTimeMs >= w.endTimeMs;
+                      const isCurrent =
+                        currentTimeMs >= w.startTimeMs && currentTimeMs < w.endTimeMs;
+
+                      return (
+                        <span
+                          key={w.id}
+                          className="transition-colors duration-100"
+                          style={{
+                            color:
+                              isCurrent || isSung
+                                ? textStyle.highlightColor
+                                : textStyle.textColor,
+                          }}
+                        >
+                          {w.word}
+                        </span>
+                      );
+                    })}
+                  </span>
+                ) : (
+                  <span style={{ color: textStyle.textColor }}>{activeLine.text}</span>
+                )}
+              </div>
+            )
           ) : (
-            <div className="text-slate-400 text-xs italic bg-black/60 px-3 py-1.5 rounded-full border border-slate-700/50 backdrop-blur-sm">
-              Lyrics will animate here in sync with audio
+            /* Instrumental Gap Indicator */
+            <div className="flex flex-col items-center gap-1.5">
+              <div className="text-amber-300 text-xs font-bold bg-black/70 px-3.5 py-1.5 rounded-full border border-amber-500/40 backdrop-blur-md shadow-lg flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                <span>
+                  🎵 Instrumental Music •{' '}
+                  {aiDesigner?.activeVisualizer.replace('_', ' ') || 'Visualizer'}
+                </span>
+              </div>
             </div>
           )}
         </div>
 
         {/* Top Floating Badge & Fullscreen Button */}
         <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-auto">
-          <div className="bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10 text-[10px] text-slate-300 flex items-center gap-1.5">
+          <div className="bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/10 text-[10px] text-slate-300 flex items-center gap-1.5 shadow">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>
-              {isAutoMode ? '✨ Auto Animate Active' : 'Manual 9:16 Preview'}
+            <span className="font-bold">
+              {aiDesigner ? `✨ ${aiDesigner.activeStyle.replace('_', ' ')}` : 'Manual Preview'}
             </span>
           </div>
 
           <button
             onClick={toggleFullscreen}
-            className="p-1.5 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-slate-300 hover:text-white transition"
+            className="p-1.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/10 text-slate-300 hover:text-white transition shadow"
             title="Toggle Fullscreen"
           >
             {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>
         </div>
       </div>
+
+      {/* Quick AI Lyric Designer Action Bar (Direct one-tap adjustments) */}
+      <div className="mt-2.5 bg-slate-900/90 rounded-2xl border border-slate-800 p-2 space-y-1.5">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-[10px] font-extrabold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+            <Sparkles className="w-3 h-3" />
+            AI Designer Controls
+          </span>
+          <button
+            onClick={() => onNavigateToTab('ai_designer')}
+            className="text-[10px] font-bold text-slate-300 hover:text-amber-300 transition"
+          >
+            Open Full Designer →
+          </button>
+        </div>
+
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-[11px] font-bold">
+          <button
+            onClick={handleQuickAIGenerate}
+            className="py-1.5 px-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center justify-center gap-1 shadow transition active:scale-95"
+            title="Regenerate full AI visual design (preserves Gemini sync timing)"
+          >
+            <Sparkles className="w-3 h-3 shrink-0" />
+            <span className="truncate">AI Auto</span>
+          </button>
+
+          <button
+            onClick={handleQuickCycleColors}
+            className="py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center gap-1 transition"
+            title="Change color palette and word accents"
+          >
+            <Palette className="w-3 h-3 text-amber-400 shrink-0" />
+            <span className="truncate">Colors</span>
+          </button>
+
+          <button
+            onClick={handleQuickCycleVisualizer}
+            className="py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center gap-1 transition"
+            title="Cycle active music visualizer for gaps"
+          >
+            <Music className="w-3 h-3 text-amber-400 shrink-0" />
+            <span className="truncate">Visualizer</span>
+          </button>
+
+          <button
+            onClick={handleQuickDynamic}
+            className="py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center gap-1 transition"
+            title="Make animations more dynamic & punchy"
+          >
+            <Zap className="w-3 h-3 text-amber-400 shrink-0" />
+            <span className="truncate">Dynamic</span>
+          </button>
+
+          <button
+            onClick={handleQuickCinematic}
+            className="py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center gap-1 transition"
+            title="Atmospheric floating cinematic transitions"
+          >
+            <Moon className="w-3 h-3 text-violet-400 shrink-0" />
+            <span className="truncate">Cinematic</span>
+          </button>
+
+          <button
+            onClick={() => onNavigateToTab('ai_designer')}
+            className="py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center gap-1 transition"
+            title="Tamil font library & styles"
+          >
+            <Sliders className="w-3 h-3 text-amber-400 shrink-0" />
+            <span className="truncate">Designer</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-amber-500 text-slate-950 px-3.5 py-1.5 rounded-full font-bold text-xs shadow-2xl flex items-center gap-1.5 border border-amber-300 animate-bounce">
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
 
       {/* Waveform Scrubber with Playhead */}
       <div className="mt-3">

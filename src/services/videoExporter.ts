@@ -1,4 +1,5 @@
 import { ProjectData, LyricLine, WordTiming } from '../types/project';
+import { MusicVisualizerRenderer } from './musicVisualizerRenderer';
 
 export interface ExportProgress {
   progress: number; // 0 to 1
@@ -265,15 +266,43 @@ export function drawLyricFrame(
   timeMs: number,
   bgImage: HTMLImageElement | null
 ) {
-  // 1. Clear background
+  // 1. Clear background & Apply Cinematic Background Motion
   ctx.save();
   if (bgImage && project.background.type === 'image') {
-    // Draw cover
+    // Cinematic camera motion calculations (slow zoom, pan, beat scale pulse)
+    const motion = project.aiDesignerConfig?.backgroundMotion;
+    const totalDuration = project.audioDurationMs || 30000;
+    const songProgress = Math.min(1, Math.max(0, timeMs / totalDuration));
+    let motionZoom = 1.0;
+    let motionPanX = 0;
+    let motionPanY = 0;
+
+    if (motion) {
+      const intensity = motion.intensity || 1.0;
+      const beatBump = Math.sin((timeMs / 1000) * 4) > 0.82 ? (motion.beatPulseScale - 1.0) : 0;
+      if (motion.type === 'SLOW_ZOOM_IN') {
+        motionZoom = 1.0 + songProgress * 0.12 * intensity + beatBump;
+      } else if (motion.type === 'SLOW_ZOOM_OUT') {
+        motionZoom = 1.12 - songProgress * 0.12 * intensity + beatBump;
+      } else if (motion.type === 'PAN_HORIZONTAL') {
+        motionZoom = 1.08 + beatBump;
+        motionPanX = Math.sin(songProgress * Math.PI * 2) * 24 * intensity;
+      } else if (motion.type === 'PAN_VERTICAL') {
+        motionZoom = 1.08 + beatBump;
+        motionPanY = Math.sin(songProgress * Math.PI * 2) * 28 * intensity;
+      } else {
+        // BEAT_SCALE_PULSE
+        motionZoom = 1.04 + beatBump * 1.5;
+      }
+    }
+
     const hRatio = width / bgImage.width;
     const vRatio = height / bgImage.height;
-    const ratio = Math.max(hRatio, vRatio);
-    const centerShiftX = (width - bgImage.width * ratio) / 2;
-    const centerShiftY = (height - bgImage.height * ratio) / 2;
+    const baseRatio = Math.max(hRatio, vRatio);
+    const finalRatio = baseRatio * motionZoom;
+    const centerShiftX = (width - bgImage.width * finalRatio) / 2 + motionPanX;
+    const centerShiftY = (height - bgImage.height * finalRatio) / 2 + motionPanY;
+
     ctx.drawImage(
       bgImage,
       0,
@@ -282,8 +311,8 @@ export function drawLyricFrame(
       bgImage.height,
       centerShiftX,
       centerShiftY,
-      bgImage.width * ratio,
-      bgImage.height * ratio
+      bgImage.width * finalRatio,
+      bgImage.height * finalRatio
     );
   } else if (project.background.type === 'gradient') {
     const grad = ctx.createLinearGradient(0, 0, width, height);
@@ -303,19 +332,60 @@ export function drawLyricFrame(
   ctx.globalAlpha = 1.0;
   ctx.restore();
 
-  // 3. Find active lyric line
+  // 3. Check for active lyric line vs Instrumental Gap
   const activeLine = project.lyrics.find(
     (l) => timeMs >= l.startTimeMs && timeMs <= l.endTimeMs
   );
 
+  const aiDesigner = project.aiDesignerConfig;
+
+  // IF NO ACTIVE LYRIC: Activate AI Music Visualizer (Instrumental Gap)
   if (!activeLine) {
+    if (aiDesigner) {
+      MusicVisualizerRenderer.render({
+        ctx,
+        width,
+        height,
+        timeMs,
+        visualizerType: aiDesigner.activeVisualizer,
+        primaryColor: aiDesigner.primaryColor,
+        accentColor: aiDesigner.accentColor,
+        glowColor: aiDesigner.glowColor,
+        energy: aiDesigner.visualEnergy,
+        position: aiDesigner.visualizerPosition,
+        opacity: 0.92,
+        isGap: true,
+      });
+    }
     return;
   }
 
-  // 4. Calculate vertical Y position
+  // If lyrics ARE active, also render background visualizer gently if configured
+  if (aiDesigner && aiDesigner.visualizerPosition === 'bottom') {
+    MusicVisualizerRenderer.render({
+      ctx,
+      width,
+      height,
+      timeMs,
+      visualizerType: aiDesigner.activeVisualizer,
+      primaryColor: aiDesigner.primaryColor,
+      accentColor: aiDesigner.accentColor,
+      glowColor: aiDesigner.glowColor,
+      energy: aiDesigner.visualEnergy,
+      position: 'bottom',
+      opacity: 0.3,
+      isGap: false,
+    });
+  }
+
+  // 4. Calculate vertical Y position & AI Designer Line Config
+  const lineDesign = aiDesigner?.lines ? aiDesigner.lines[activeLine.id] : null;
   const { textStyle, animationStyle } = project;
+
   let targetY = height / 2;
-  if (textStyle.verticalPosition === 'top') {
+  if (lineDesign) {
+    targetY = (height * lineDesign.verticalPositionPercent) / 100;
+  } else if (textStyle.verticalPosition === 'top') {
     targetY = height * 0.22;
   } else if (textStyle.verticalPosition === 'bottom') {
     targetY = height * 0.78;
@@ -335,97 +405,111 @@ export function drawLyricFrame(
   let offsetX = 0;
   let offsetY = 0;
 
-  const isAutoMode = project.animationMode === 'auto';
-  const autoConfig = project.autoAnimationConfig;
-  const lineAutoAnim =
-    isAutoMode && autoConfig?.timeline
-      ? autoConfig.timeline.find((t) => t.lineId === activeLine.id)
-      : null;
-
-  if (isAutoMode && lineAutoAnim) {
-    // Auto Animation Kinematics
-    const intensity = autoConfig?.motionIntensity ?? 1.0;
-    const accentScale = lineAutoAnim.accentScale ?? 1.15;
-
-    switch (lineAutoAnim.motionEffect) {
-      case 'PUNCH': {
-        // Sharp punch on beat entry, settles smoothly
-        if (lineProgress < 0.2) {
-          const punchT = lineProgress / 0.2;
-          scale = 0.9 + Math.sin(punchT * Math.PI) * (accentScale - 0.9) * intensity;
-          opacity = Math.min(1, punchT * 1.5);
-        } else if (lineProgress > 0.85) {
-          opacity = (1 - lineProgress) / 0.15;
-        } else {
-          scale = 1.0;
-        }
-        break;
-      }
-      case 'POP_ACCENT': {
-        if (lineProgress < 0.25) {
-          const popT = lineProgress / 0.25;
-          scale = 0.85 + Math.sin(popT * (Math.PI / 2)) * (accentScale - 0.85);
-          opacity = popT;
-        } else if (lineProgress > 0.88) {
-          opacity = (1 - lineProgress) / 0.12;
-        } else {
-          scale = 1.0 + (accentScale - 1.0) * 0.2;
-        }
-        break;
-      }
-      case 'DRIFT': {
-        // Flowing kinetic horizontal/vertical drift
-        opacity = lineProgress < 0.15 ? lineProgress / 0.15 : lineProgress > 0.85 ? (1 - lineProgress) / 0.15 : 1.0;
-        offsetX = (lineProgress - 0.5) * 30 * intensity;
-        offsetY = Math.sin(lineProgress * Math.PI) * -8 * intensity;
-        break;
-      }
-      case 'FLOAT': {
-        // Gentle breathing atmospheric float
-        opacity = lineProgress < 0.2 ? lineProgress / 0.2 : lineProgress > 0.8 ? (1 - lineProgress) / 0.2 : 1.0;
-        offsetY = Math.sin(lineProgress * Math.PI * 2) * 12 * intensity;
-        scale = 1.0 + Math.sin(lineProgress * Math.PI) * 0.04 * intensity;
-        break;
-      }
-      case 'PULSE': {
-        // Rhythmic pulsing bounce
-        opacity = lineProgress < 0.1 ? lineProgress / 0.1 : lineProgress > 0.9 ? (1 - lineProgress) / 0.1 : 1.0;
-        scale = 1.0 + Math.abs(Math.sin(lineProgress * Math.PI * 4)) * 0.08 * intensity;
-        break;
-      }
-      case 'ZOOM_IN': {
-        opacity = lineProgress < 0.15 ? lineProgress / 0.15 : lineProgress > 0.85 ? (1 - lineProgress) / 0.15 : 1.0;
-        scale = 0.92 + lineProgress * 0.16 * intensity;
-        break;
-      }
-      case 'FADE_SLOW': {
-        if (lineProgress < 0.25) opacity = lineProgress / 0.25;
-        else if (lineProgress > 0.75) opacity = (1 - lineProgress) / 0.25;
-        break;
-      }
-      default: {
-        if (lineProgress < 0.15) opacity = lineProgress / 0.15;
-        else if (lineProgress > 0.85) opacity = (1 - lineProgress) / 0.15;
-      }
+  // Handle AI Designer or Auto Animation or Manual animation
+  if (lineDesign) {
+    // AI Designer Entrance & Exit Kinematics
+    if (lineProgress < 0.15) {
+      const enterT = lineProgress / 0.15;
+      opacity = enterT;
+      if (lineDesign.entranceAnimation === 'scale_pop') scale = 0.88 + enterT * 0.12;
+      else if (lineDesign.entranceAnimation === 'slide_up') offsetY = (1 - enterT) * 35;
+      else if (lineDesign.entranceAnimation === 'blur_in') scale = 0.95 + enterT * 0.05;
+    } else if (lineProgress > 0.88) {
+      const exitT = (lineProgress - 0.88) / 0.12;
+      opacity = 1 - exitT;
+      if (lineDesign.exitAnimation === 'slide_down') offsetY = exitT * 30;
+      else if (lineDesign.exitAnimation === 'zoom_out') scale = 1.0 + exitT * 0.12;
+    } else {
+      // Subtle float / breathing during line display
+      scale = 1.0 + Math.sin(lineProgress * Math.PI) * 0.02;
     }
   } else {
-    // Manual animation calculation
-    if (animationStyle === 'FADE') {
-      if (lineProgress < 0.15) opacity = lineProgress / 0.15;
-      else if (lineProgress > 0.85) opacity = (1 - lineProgress) / 0.15;
-    } else if (animationStyle === 'SLIDE') {
-      if (lineProgress < 0.2) {
-        offsetY = (1 - lineProgress / 0.2) * 40;
-        opacity = lineProgress / 0.2;
-      } else if (lineProgress > 0.85) {
-        offsetY = -((lineProgress - 0.85) / 0.15) * 40;
-        opacity = (1 - lineProgress) / 0.15;
+    const isAutoMode = project.animationMode === 'auto';
+    const autoConfig = project.autoAnimationConfig;
+    const lineAutoAnim =
+      isAutoMode && autoConfig?.timeline
+        ? autoConfig.timeline.find((t) => t.lineId === activeLine.id)
+        : null;
+
+    if (isAutoMode && lineAutoAnim) {
+      const intensity = autoConfig?.motionIntensity ?? 1.0;
+      const accentScale = lineAutoAnim.accentScale ?? 1.15;
+
+      switch (lineAutoAnim.motionEffect) {
+        case 'PUNCH': {
+          if (lineProgress < 0.2) {
+            const punchT = lineProgress / 0.2;
+            scale = 0.9 + Math.sin(punchT * Math.PI) * (accentScale - 0.9) * intensity;
+            opacity = Math.min(1, punchT * 1.5);
+          } else if (lineProgress > 0.85) {
+            opacity = (1 - lineProgress) / 0.15;
+          } else {
+            scale = 1.0;
+          }
+          break;
+        }
+        case 'POP_ACCENT': {
+          if (lineProgress < 0.25) {
+            const popT = lineProgress / 0.25;
+            scale = 0.85 + Math.sin(popT * (Math.PI / 2)) * (accentScale - 0.85);
+            opacity = popT;
+          } else if (lineProgress > 0.88) {
+            opacity = (1 - lineProgress) / 0.12;
+          } else {
+            scale = 1.0 + (accentScale - 1.0) * 0.2;
+          }
+          break;
+        }
+        case 'DRIFT': {
+          opacity = lineProgress < 0.15 ? lineProgress / 0.15 : lineProgress > 0.85 ? (1 - lineProgress) / 0.15 : 1.0;
+          offsetX = (lineProgress - 0.5) * 30 * intensity;
+          offsetY = Math.sin(lineProgress * Math.PI) * -8 * intensity;
+          break;
+        }
+        case 'FLOAT': {
+          opacity = lineProgress < 0.2 ? lineProgress / 0.2 : lineProgress > 0.8 ? (1 - lineProgress) / 0.2 : 1.0;
+          offsetY = Math.sin(lineProgress * Math.PI * 2) * 12 * intensity;
+          scale = 1.0 + Math.sin(lineProgress * Math.PI) * 0.04 * intensity;
+          break;
+        }
+        case 'PULSE': {
+          opacity = lineProgress < 0.1 ? lineProgress / 0.1 : lineProgress > 0.9 ? (1 - lineProgress) / 0.1 : 1.0;
+          scale = 1.0 + Math.abs(Math.sin(lineProgress * Math.PI * 4)) * 0.08 * intensity;
+          break;
+        }
+        case 'ZOOM_IN': {
+          opacity = lineProgress < 0.15 ? lineProgress / 0.15 : lineProgress > 0.85 ? (1 - lineProgress) / 0.15 : 1.0;
+          scale = 0.92 + lineProgress * 0.16 * intensity;
+          break;
+        }
+        case 'FADE_SLOW': {
+          if (lineProgress < 0.25) opacity = lineProgress / 0.25;
+          else if (lineProgress > 0.75) opacity = (1 - lineProgress) / 0.25;
+          break;
+        }
+        default: {
+          if (lineProgress < 0.15) opacity = lineProgress / 0.15;
+          else if (lineProgress > 0.85) opacity = (1 - lineProgress) / 0.15;
+        }
       }
-    } else if (animationStyle === 'ZOOM' || animationStyle === 'SCALE') {
-      scale = 0.95 + lineProgress * 0.1;
-    } else if (animationStyle === 'BOUNCE') {
-      const t = Math.min(1, lineProgress * 4);
-      scale = 1 + Math.sin(t * Math.PI) * 0.12;
+    } else {
+      if (animationStyle === 'FADE') {
+        if (lineProgress < 0.15) opacity = lineProgress / 0.15;
+        else if (lineProgress > 0.85) opacity = (1 - lineProgress) / 0.15;
+      } else if (animationStyle === 'SLIDE') {
+        if (lineProgress < 0.2) {
+          offsetY = (1 - lineProgress / 0.2) * 40;
+          opacity = lineProgress / 0.2;
+        } else if (lineProgress > 0.85) {
+          offsetY = -((lineProgress - 0.85) / 0.15) * 40;
+          opacity = (1 - lineProgress) / 0.15;
+        }
+      } else if (animationStyle === 'ZOOM' || animationStyle === 'SCALE') {
+        scale = 0.95 + lineProgress * 0.1;
+      } else if (animationStyle === 'BOUNCE') {
+        const t = Math.min(1, lineProgress * 4);
+        scale = 1 + Math.sin(t * Math.PI) * 0.12;
+      }
     }
   }
 
@@ -433,44 +517,144 @@ export function drawLyricFrame(
   ctx.translate(width / 2 + offsetX, targetY + offsetY);
   ctx.scale(scale, scale);
 
-  // Setup font
-  const scaledFontSize = textStyle.fontSize * (width / 400);
-  const fontStyle = textStyle.isItalic ? 'italic ' : '';
-  const fontWeight = textStyle.fontWeight || 700;
-  ctx.font = `${fontStyle}${fontWeight} ${scaledFontSize}px ${textStyle.fontFamily || 'sans-serif'}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+  // 6. RENDER WORDS: AI Lyric Visual Designer or Standard Line
+  if (lineDesign && lineDesign.words && lineDesign.words.length > 0) {
+    // Dynamic Tamil Typography Rendering
+    const words = lineDesign.words;
+    const rawWordTimings = activeLine.words || [];
 
-  // Check if karaoke or word highlight is enabled and word timings exist
-  const hasWords = activeLine.words && activeLine.words.length > 0;
-  const isKaraokeMode =
-    (animationStyle === 'KARAOKE' || animationStyle === 'WORD_HIGHLIGHT') && hasWords;
+    // Measure total line layout
+    const wordMeasures = words.map((w) => {
+      const scaledSize = w.fontSize * (width / 400);
+      ctx.font = `700 ${scaledSize}px ${w.fontFamily || textStyle.fontFamily || 'sans-serif'}`;
+      return {
+        ...w,
+        scaledSize,
+        width: ctx.measureText(w.word).width,
+      };
+    });
 
-  if (isKaraokeMode && activeLine.words) {
-    // Measure total line width to position words
-    const words = activeLine.words;
-    const spaceWidth = ctx.measureText(' ').width;
-    const wordWidths = words.map((w) => ctx.measureText(w.word).width);
-    const totalLineWidth =
-      wordWidths.reduce((a, b) => a + b, 0) + spaceWidth * (words.length - 1);
+    const spaceW = 12 * (width / 400);
+    const totalW = wordMeasures.reduce((acc, curr) => acc + curr.width, 0) + spaceW * (words.length - 1);
 
-    let startX = -totalLineWidth / 2;
+    let curX = -totalW / 2;
 
-    for (let i = 0; i < words.length; i++) {
-      const w = words[i];
-      const wWidth = wordWidths[i];
-      const wordCenter = startX + wWidth / 2;
+    for (let i = 0; i < wordMeasures.length; i++) {
+      const wm = wordMeasures[i];
+      const timing = rawWordTimings[i];
 
-      const isSung = timeMs >= w.endTimeMs;
-      const isCurrent = timeMs >= w.startTimeMs && timeMs < w.endTimeMs;
+      // Highlight status if word timings exist
+      const isSung = timing ? timeMs >= timing.endTimeMs : lineProgress > (i / wordMeasures.length);
+      const isCurrent = timing
+        ? timeMs >= timing.startTimeMs && timeMs < timing.endTimeMs
+        : lineProgress >= (i / wordMeasures.length) && lineProgress < ((i + 1) / wordMeasures.length);
 
-      // Word color: highlight if sung or currently singing
-      let fillCol = textStyle.textColor;
-      if (isCurrent || isSung) {
-        fillCol = textStyle.highlightColor;
-      }
+      const wordCenter = curX + wm.width / 2 + (wm.offsetX * (width / 400));
+      const wordY = (wm.offsetY * (width / 400));
 
       ctx.save();
+      ctx.translate(wordCenter, wordY);
+
+      // Organic rotation
+      if (wm.rotationDeg !== 0) {
+        ctx.rotate((wm.rotationDeg * Math.PI) / 180);
+      }
+
+      // Word animation micro-scaling (beat pop or emphasis)
+      let wordScale = 1.0;
+      if (isCurrent) {
+        wordScale = wm.sizeTier === 'very_large' ? 1.18 : 1.08;
+      }
+      ctx.scale(wordScale, wordScale);
+
+      ctx.font = `700 ${wm.scaledSize}px ${wm.fontFamily || textStyle.fontFamily || 'sans-serif'}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Color selection (Gold/Accent or Primary White)
+      let fillCol = wm.color;
+      if (isCurrent) {
+        fillCol = aiDesigner?.accentColor || textStyle.highlightColor || '#F59E0B';
+      }
+
+      // Effects: Glow / Shadow / Stroke / Soft Neon
+      if (wm.effect === 'glow' || isCurrent) {
+        ctx.shadowColor = aiDesigner?.glowColor || '#F59E0B';
+        ctx.shadowBlur = (isCurrent ? 24 : 14) * (width / 400);
+      } else {
+        ctx.shadowColor = 'rgba(0,0,0,0.9)';
+        ctx.shadowBlur = 10 * (width / 400);
+        ctx.shadowOffsetY = 4 * (width / 400);
+      }
+
+      // Stroke outline
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = Math.max(2, 4 * (width / 400));
+      ctx.strokeText(wm.word, 0, 0);
+
+      // Fill
+      ctx.fillStyle = fillCol;
+      ctx.fillText(wm.word, 0, 0);
+
+      ctx.restore();
+      curX += wm.width + spaceW;
+    }
+  } else {
+    // Standard Line rendering fallback
+    const scaledFontSize = textStyle.fontSize * (width / 400);
+    const fontStyle = textStyle.isItalic ? 'italic ' : '';
+    const fontWeight = textStyle.fontWeight || 700;
+    ctx.font = `${fontStyle}${fontWeight} ${scaledFontSize}px ${textStyle.fontFamily || 'sans-serif'}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const hasWords = activeLine.words && activeLine.words.length > 0;
+    const isKaraokeMode =
+      (animationStyle === 'KARAOKE' || animationStyle === 'WORD_HIGHLIGHT') && hasWords;
+
+    if (isKaraokeMode && activeLine.words) {
+      const words = activeLine.words;
+      const spaceWidth = ctx.measureText(' ').width;
+      const wordWidths = words.map((w) => ctx.measureText(w.word).width);
+      const totalLineWidth =
+        wordWidths.reduce((a, b) => a + b, 0) + spaceWidth * (words.length - 1);
+
+      let startX = -totalLineWidth / 2;
+
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        const wWidth = wordWidths[i];
+        const wordCenter = startX + wWidth / 2;
+
+        const isSung = timeMs >= w.endTimeMs;
+        const isCurrent = timeMs >= w.startTimeMs && timeMs < w.endTimeMs;
+
+        let fillCol = textStyle.textColor;
+        if (isCurrent || isSung) {
+          fillCol = textStyle.highlightColor;
+        }
+
+        ctx.save();
+        if (textStyle.hasShadow) {
+          ctx.shadowColor = textStyle.shadowColor || 'rgba(0,0,0,0.9)';
+          ctx.shadowBlur = textStyle.shadowBlur || 12;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 4;
+        }
+
+        if (textStyle.hasStroke) {
+          ctx.strokeStyle = textStyle.strokeColor || '#000000';
+          ctx.lineWidth = textStyle.strokeWidth * (width / 400);
+          ctx.strokeText(w.word, wordCenter, 0);
+        }
+
+        ctx.fillStyle = fillCol;
+        ctx.fillText(w.word, wordCenter, 0);
+        ctx.restore();
+
+        startX += wWidth + spaceWidth;
+      }
+    } else {
       if (textStyle.hasShadow) {
         ctx.shadowColor = textStyle.shadowColor || 'rgba(0,0,0,0.9)';
         ctx.shadowBlur = textStyle.shadowBlur || 12;
@@ -478,37 +662,15 @@ export function drawLyricFrame(
         ctx.shadowOffsetY = 4;
       }
 
-      // Stroke
       if (textStyle.hasStroke) {
         ctx.strokeStyle = textStyle.strokeColor || '#000000';
         ctx.lineWidth = textStyle.strokeWidth * (width / 400);
-        ctx.strokeText(w.word, wordCenter, 0);
+        ctx.strokeText(activeLine.text, 0, 0);
       }
 
-      // Fill
-      ctx.fillStyle = fillCol;
-      ctx.fillText(w.word, wordCenter, 0);
-      ctx.restore();
-
-      startX += wWidth + spaceWidth;
+      ctx.fillStyle = textStyle.textColor;
+      ctx.fillText(activeLine.text, 0, 0);
     }
-  } else {
-    // Standard line rendering
-    if (textStyle.hasShadow) {
-      ctx.shadowColor = textStyle.shadowColor || 'rgba(0,0,0,0.9)';
-      ctx.shadowBlur = textStyle.shadowBlur || 12;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 4;
-    }
-
-    if (textStyle.hasStroke) {
-      ctx.strokeStyle = textStyle.strokeColor || '#000000';
-      ctx.lineWidth = textStyle.strokeWidth * (width / 400);
-      ctx.strokeText(activeLine.text, 0, 0);
-    }
-
-    ctx.fillStyle = textStyle.textColor;
-    ctx.fillText(activeLine.text, 0, 0);
   }
 
   ctx.restore();

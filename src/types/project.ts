@@ -115,6 +115,136 @@ export interface ProjectMetadata {
   album: string;
 }
 
+export type AILyricDesignStyle =
+  | 'AI_AUTO'
+  | 'DYNAMIC_POP'
+  | 'CINEMATIC_FLOAT'
+  | 'SCATTERED_WORDS'
+  | 'BIG_SMALL'
+  | 'BEAT_POP'
+  | 'KINETIC_TYPOGRAPHY'
+  | 'WORD_REVEAL'
+  | 'HANDWRITTEN'
+  | 'MODERN_MINIMAL'
+  | 'CINEMATIC_CHAOS'
+  | 'AI_MIX';
+
+export type MusicVisualizerType =
+  | 'AUDIO_EQUALIZER'
+  | 'CIRCULAR_EQUALIZER'
+  | 'WAVEFORM'
+  | 'AUDIO_RINGS'
+  | 'PARTICLE_PULSE'
+  | 'GLOW_PULSE'
+  | 'BASS_PULSE'
+  | 'EDGE_VISUALIZER'
+  | 'WAVE_LINES'
+  | 'MINIMAL_DOT_VISUALIZER';
+
+export type ColorPalettePreset =
+  | 'WHITE_GOLD'
+  | 'WHITE_YELLOW'
+  | 'WHITE_RED'
+  | 'WHITE_CYAN'
+  | 'WHITE_PINK'
+  | 'WARM_CINEMATIC'
+  | 'COOL_CINEMATIC'
+  | 'NEON_PASTEL'
+  | 'MONOCHROME';
+
+export interface FontItem {
+  id: string;
+  name: string;
+  family: string;
+  category: 'unicode' | 'decorative' | 'handwritten' | 'cinematic' | 'bold' | 'modern';
+  isCustom?: boolean;
+  dataUrl?: string;
+}
+
+export type WordSizeTier = 'small' | 'medium' | 'large' | 'very_large';
+
+export type WordAnimation =
+  | 'scale_pop'
+  | 'slide_left'
+  | 'slide_right'
+  | 'fade_zoom'
+  | 'rise_bottom'
+  | 'blur_reveal'
+  | 'beat_impact'
+  | 'kinetic_drift'
+  | 'float'
+  | 'letter_reveal'
+  | 'mask_reveal'
+  | 'wipe';
+
+export interface WordVisualDesign {
+  wordId: string;
+  word: string;
+  sizeTier: WordSizeTier;
+  fontSize: number;
+  colorRole: 'primary' | 'accent' | 'secondary';
+  color: string;
+  fontFamily: string;
+  animation: WordAnimation;
+  rotationDeg: number;
+  effect: 'none' | 'glow' | 'shadow' | 'stroke' | 'soft_neon' | 'gradient';
+  offsetX: number;
+  offsetY: number;
+}
+
+export type LineLayoutType =
+  | 'centered'
+  | 'scattered'
+  | 'staggered_diagonal'
+  | 'upper_emphasis'
+  | 'lower_floating'
+  | 'stacked_contrast';
+
+export interface LineVisualDesign {
+  lineId: string;
+  layoutType: LineLayoutType;
+  verticalPositionPercent: number; // 15% to 85%
+  horizontalPositionPercent: number; // 15% to 85%
+  entranceAnimation: 'fade' | 'slide_up' | 'scale_pop' | 'blur_in' | 'rise_up' | 'zoom_in';
+  exitAnimation: 'fade_out' | 'slide_down' | 'zoom_out' | 'blur_out';
+  words: WordVisualDesign[];
+}
+
+export interface CinematicBackgroundMotion {
+  type: 'SLOW_ZOOM_IN' | 'SLOW_ZOOM_OUT' | 'PAN_HORIZONTAL' | 'PAN_VERTICAL' | 'PARALLAX' | 'BEAT_SCALE_PULSE';
+  intensity: number; // 0.5 to 1.5
+  beatPulseScale: number; // e.g. 1.02
+}
+
+export interface AILyricDesignerConfig {
+  activeStyle: AILyricDesignStyle;
+  activeVisualizer: MusicVisualizerType;
+  visualizerPosition: 'bottom' | 'top' | 'edges' | 'behind_lyrics' | 'center';
+  colorPalette: ColorPalettePreset;
+  primaryColor: string;
+  accentColor: string;
+  secondaryColor: string;
+  glowColor: string;
+  shadowColor: string;
+  visualEnergy: number; // 0 to 100
+  backgroundMotion: CinematicBackgroundMotion;
+  primaryFontFamily: string;
+  primaryFontName: string;
+  secondaryFontFamily: string;
+  secondaryFontName: string;
+  decorativeFontFamily: string;
+  decorativeFontName: string;
+  lines: Record<string, LineVisualDesign>;
+  fontLibrary?: FontItem[];
+  referenceVideoName?: string;
+  referenceAnalysis?: {
+    detectedPalette: string;
+    detectedRhythm: string;
+    detectedTypography: string;
+    notes: string;
+  };
+}
+
 export interface ProjectData {
   id: string;
   title: string;
@@ -132,7 +262,56 @@ export interface ProjectData {
   exportResolution: '720p' | '1080p';
   animationMode?: AnimationMode;
   autoAnimationConfig?: AutoAnimationConfig;
+  aiDesignerConfig?: AILyricDesignerConfig;
 }
+
+export const BUILTIN_TAMIL_FONTS: FontItem[] = [
+  { id: 'mukta', name: 'Mukta Malar (Clean Tamil)', family: "'Mukta Malar', sans-serif", category: 'unicode' },
+  { id: 'arima', name: 'Arima Madurai (Calligraphic)', family: "'Arima Madurai', cursive", category: 'decorative' },
+  { id: 'catamaran', name: 'Catamaran (Modern Tamil)', family: "'Catamaran', sans-serif", category: 'modern' },
+  { id: 'kavivanar', name: 'Kavivanar (Tamil Handwritten)', family: "'Kavivanar', cursive", category: 'handwritten' },
+  { id: 'coiny', name: 'Coiny (Bold Display Pop)', family: "'Coiny', cursive", category: 'bold' },
+  { id: 'outfit', name: 'Outfit (Sleek Display)', family: "'Outfit', sans-serif", category: 'cinematic' },
+  { id: 'playfair', name: 'Playfair Display (Serif)', family: "'Playfair Display', serif", category: 'cinematic' },
+];
+
+export const COLOR_PALETTE_PRESETS: Record<ColorPalettePreset, { name: string; primary: string; accent: string; secondary: string; glow: string; shadow: string }> = {
+  WHITE_GOLD: { name: 'White & Royal Gold', primary: '#FFFFFF', accent: '#F59E0B', secondary: '#FDE68A', glow: '#D97706', shadow: '#000000' },
+  WHITE_YELLOW: { name: 'White & Electric Yellow', primary: '#FFFFFF', accent: '#FACC15', secondary: '#FEF08A', glow: '#EAB308', shadow: '#000000' },
+  WHITE_RED: { name: 'White & Crimson Red', primary: '#FFFFFF', accent: '#EF4444', secondary: '#FCA5A5', glow: '#DC2626', shadow: '#000000' },
+  WHITE_CYAN: { name: 'White & Electric Cyan', primary: '#FFFFFF', accent: '#06B6D4', secondary: '#A5F3FC', glow: '#0891B2', shadow: '#000000' },
+  WHITE_PINK: { name: 'White & Lotus Pink', primary: '#FFFFFF', accent: '#EC4899', secondary: '#FBCFE8', glow: '#DB2777', shadow: '#000000' },
+  WARM_CINEMATIC: { name: 'Warm Cinematic (Cream & Amber)', primary: '#FFFBEB', accent: '#F97316', secondary: '#FDE047', glow: '#EA580C', shadow: '#000000' },
+  COOL_CINEMATIC: { name: 'Cool Cinematic (Ice & Violet)', primary: '#F0F9FF', accent: '#8B5CF6', secondary: '#38BDF8', glow: '#7C3AED', shadow: '#000000' },
+  NEON_PASTEL: { name: 'Neon Pastel (Mint & Peach)', primary: '#FDF2F8', accent: '#10B981', secondary: '#FB7185', glow: '#059669', shadow: '#000000' },
+  MONOCHROME: { name: 'Monochrome Cinema', primary: '#F8FAFC', accent: '#E2E8F0', secondary: '#94A3B8', glow: '#64748B', shadow: '#000000' },
+};
+
+export const DEFAULT_AI_DESIGNER_CONFIG: AILyricDesignerConfig = {
+  activeStyle: 'AI_AUTO',
+  activeVisualizer: 'WAVEFORM',
+  visualizerPosition: 'bottom',
+  colorPalette: 'WHITE_GOLD',
+  primaryColor: '#FFFFFF',
+  accentColor: '#F59E0B',
+  secondaryColor: '#FDE68A',
+  glowColor: '#D97706',
+  shadowColor: '#000000',
+  visualEnergy: 65,
+  backgroundMotion: {
+    type: 'SLOW_ZOOM_IN',
+    intensity: 1.0,
+    beatPulseScale: 1.02,
+  },
+  primaryFontFamily: "'Mukta Malar', sans-serif",
+  primaryFontName: 'Mukta Malar (Clean Tamil)',
+  secondaryFontFamily: "'Arima Madurai', cursive",
+  secondaryFontName: 'Arima Madurai (Calligraphic)',
+  decorativeFontFamily: "'Kavivanar', cursive",
+  decorativeFontName: 'Kavivanar (Tamil Handwritten)',
+  lines: {},
+  fontLibrary: BUILTIN_TAMIL_FONTS,
+};
 
 export const DEFAULT_TEXT_STYLE: TextStyleConfig = {
   fontFamily: 'sans-serif',
@@ -263,5 +442,6 @@ export function createNewProject(title = 'Untitled Lyric Video'): ProjectData {
     animationStyle: 'KARAOKE',
     background: { ...DEFAULT_BACKGROUND },
     exportResolution: '1080p',
+    aiDesignerConfig: { ...DEFAULT_AI_DESIGNER_CONFIG },
   };
 }
