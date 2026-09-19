@@ -48,16 +48,65 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const visualizerCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const bgVideoRef = useRef<HTMLVideoElement | null>(null);
+  const overlayVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const { textStyle, animationStyle, background } = project;
   const isAutoMode = project.animationMode === 'auto';
   const autoConfig = project.autoAnimationConfig;
   const aiDesigner = project.aiDesignerConfig;
+  const bgSource = background.bgSource || 'single';
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
+
+  // Find active timeline background image
+  let activeTimelineImage: any = null;
+  if (bgSource === 'multiple' && background.timelineImages && background.timelineImages.length > 0) {
+    activeTimelineImage = background.timelineImages.find(
+      (img) => currentTimeMs >= img.startTimeMs && currentTimeMs <= img.endTimeMs
+    ) || background.timelineImages[0];
+  }
+
+  // Sync background video element
+  useEffect(() => {
+    const video = bgVideoRef.current;
+    if (video) {
+      if (isPlaying) {
+        video.play().catch(() => {});
+      } else {
+        video.pause();
+      }
+      const dur = video.duration;
+      if (dur && dur > 0) {
+        const targetSec = (currentTimeMs / 1000) % dur;
+        if (Math.abs(video.currentTime - targetSec) > 0.4) {
+          video.currentTime = targetSec;
+        }
+      }
+    }
+  }, [currentTimeMs, isPlaying]);
+
+  // Sync overlay video element
+  useEffect(() => {
+    const video = overlayVideoRef.current;
+    if (video) {
+      if (isPlaying) {
+        video.play().catch(() => {});
+      } else {
+        video.pause();
+      }
+      const dur = video.duration;
+      if (dur && dur > 0) {
+        const targetSec = (currentTimeMs / 1000) % dur;
+        if (Math.abs(video.currentTime - targetSec) > 0.4) {
+          video.currentTime = targetSec;
+        }
+      }
+    }
+  }, [currentTimeMs, isPlaying]);
 
   // Find active line
   const activeLineIndex = project.lyrics.findIndex(
@@ -305,7 +354,32 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
         className="relative flex-1 min-h-[360px] max-h-[580px] w-full bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center select-none"
       >
         {/* Background Image / Color with Cinematic Camera Motion */}
-        {background.type === 'image' && background.mediaUrl ? (
+        {bgSource === 'multiple' && activeTimelineImage ? (
+          <img
+            src={activeTimelineImage.url}
+            alt="Timeline Background"
+            className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 ease-out"
+            style={{
+              filter: background.blur > 0 ? `blur(${background.blur}px)` : 'none',
+              opacity: background.opacity,
+              transform: bgTransform,
+            }}
+            referrerPolicy="no-referrer"
+          />
+        ) : bgSource === 'video' && background.videoUrl ? (
+          <video
+            ref={bgVideoRef}
+            src={background.videoUrl}
+            muted
+            playsInline
+            loop
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{
+              filter: background.blur > 0 ? `blur(${background.blur}px)` : 'none',
+              opacity: background.opacity,
+            }}
+          />
+        ) : (background.type === 'image' || bgSource === 'single' || bgSource === 'ai_generate') && background.mediaUrl ? (
           <img
             src={background.mediaUrl}
             alt="Background"
@@ -315,6 +389,7 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
               opacity: background.opacity,
               transform: bgTransform,
             }}
+            referrerPolicy="no-referrer"
           />
         ) : (
           <div
@@ -333,6 +408,44 @@ export const PreviewScreen: React.FC<PreviewScreenProps> = ({
             opacity: background.overlayOpacity ?? 0.4,
           }}
         />
+
+        {/* Dynamic Black-Background Verse Lyric Overlay with Blend Modes */}
+        {background.overlayVideo && background.overlayVideo.url && (
+          <video
+            ref={overlayVideoRef}
+            src={background.overlayVideo.url}
+            muted
+            playsInline
+            loop
+            className="absolute pointer-events-none origin-center"
+            style={{
+              mixBlendMode: background.overlayVideo.blendMode === 'screen'
+                ? 'screen'
+                : background.overlayVideo.blendMode === 'lighten'
+                ? 'lighten'
+                : 'normal',
+              opacity: background.overlayVideo.opacity ?? 0.8,
+              filter: `
+                brightness(${background.overlayVideo.brightness ?? 1.0})
+                contrast(${background.overlayVideo.contrast ?? 1.0})
+                saturate(${background.overlayVideo.saturation ?? 1.0})
+              `,
+              transform: `
+                translate(
+                  calc(-50% + ${(background.overlayVideo.positionX ?? 50) - 50}%),
+                  calc(-50% + ${(background.overlayVideo.positionY ?? 50) - 50}%)
+                )
+                scale(${background.overlayVideo.scale ?? 1.0})
+              `,
+              left: '50%',
+              top: '50%',
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              zIndex: 8,
+            }}
+          />
+        )}
 
         {/* Real-time Music Visualizer Canvas (Active in Instrumental Gaps) */}
         <canvas

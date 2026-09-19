@@ -48,6 +48,37 @@ export interface TextStyleConfig {
   customYPercent: number; // 10% to 90%
 }
 
+export interface TimelineImageItem {
+  id: string;
+  url: string;
+  startTimeMs: number;
+  endTimeMs: number;
+  durationMs: number;
+  crop?: string;
+  positionX?: number; // 0 to 100
+  positionY?: number; // 0 to 100
+  scale?: number;     // 0.1 to 3
+  zoom?: 'none' | 'slow_in' | 'slow_out';
+  pan?: 'none' | 'left' | 'right' | 'up' | 'down';
+  transition?: 'none' | 'fade' | 'slide' | 'zoom';
+}
+
+export interface OverlayVideoConfig {
+  url: string | null;
+  fileName?: string;
+  opacity: number;      // 0 to 1
+  brightness: number;   // 0 to 2
+  contrast: number;     // 0 to 2
+  saturation: number;   // 0 to 2
+  scale: number;        // 0.1 to 3
+  positionX: number;    // percent 0 to 100
+  positionY: number;    // percent 0 to 100
+  crop?: string;
+  startTimeMs: number;
+  endTimeMs: number;
+  blendMode: 'screen' | 'lighten' | 'normal';
+}
+
 export interface BackgroundConfig {
   type: 'color' | 'gradient' | 'image' | 'video';
   color: string;
@@ -57,6 +88,16 @@ export interface BackgroundConfig {
   opacity: number;
   overlayColor: string;
   overlayOpacity: number;
+  
+  // Quranic Cinematic additions
+  bgSource?: 'single' | 'multiple' | 'video' | 'ai_generate';
+  timelineImages?: TimelineImageItem[];
+  videoUrl?: string | null;
+  videoFileName?: string;
+  videoLoop?: boolean;
+  overlayVideo?: OverlayVideoConfig;
+  quranLock?: boolean;
+  templateId?: string;
 }
 
 export type AnimationMode = 'manual' | 'auto';

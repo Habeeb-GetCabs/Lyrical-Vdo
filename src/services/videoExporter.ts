@@ -69,8 +69,72 @@ export class VideoExporter {
       }
     }
 
+    // Pre-load all timeline images
+    const timelineImages: Record<string, HTMLImageElement> = {};
+    if (project.background.bgSource === 'multiple' && project.background.timelineImages) {
+      for (const imgConfig of project.background.timelineImages) {
+        try {
+          const img = await Promise.race([
+            new Promise<HTMLImageElement>((resolve, reject) => {
+              const el = new Image();
+              el.crossOrigin = 'anonymous';
+              el.onload = () => resolve(el);
+              el.onerror = () => reject(new Error('Timeline img failed'));
+              el.src = imgConfig.url;
+            }),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
+          ]);
+          if (img) {
+            timelineImages[imgConfig.id] = img;
+          }
+        } catch (_) {}
+      }
+    }
+
+    // Pre-load/Sync background video element
+    let bgVideo: HTMLVideoElement | null = null;
+    if (project.background.bgSource === 'video' && project.background.videoUrl) {
+      try {
+        bgVideo = document.createElement('video');
+        bgVideo.src = project.background.videoUrl;
+        bgVideo.muted = true;
+        bgVideo.playsInline = true;
+        await new Promise((r) => {
+          bgVideo!.onloadeddata = r;
+          bgVideo!.onerror = r;
+          setTimeout(r, 1000);
+        });
+      } catch (_) {
+        bgVideo = null;
+      }
+    }
+
+    // Pre-load/Sync overlay video element
+    let overlayVideo: HTMLVideoElement | null = null;
+    if (project.background.overlayVideo && project.background.overlayVideo.url) {
+      try {
+        overlayVideo = document.createElement('video');
+        overlayVideo.src = project.background.overlayVideo.url;
+        overlayVideo.muted = true;
+        overlayVideo.playsInline = true;
+        await new Promise((r) => {
+          overlayVideo!.onloadeddata = r;
+          overlayVideo!.onerror = r;
+          setTimeout(r, 1000);
+        });
+      } catch (_) {
+        overlayVideo = null;
+      }
+    }
+
+    const exportAssets = {
+      timelineImages,
+      bgVideo,
+      overlayVideo
+    };
+
     // Pre-render the very first frame onto canvas so captureStream has initial bitmap data
-    drawLyricFrame(ctx, width, height, project, 0, bgImage);
+    drawLyricFrame(ctx, width, height, project, 0, bgImage, exportAssets);
     if (options?.onFrameRendered) {
       options.onFrameRendered(canvas);
     }
@@ -191,7 +255,7 @@ export class VideoExporter {
           currentMs = Math.min(totalDurationMs, elapsed);
 
           // Render Frame
-          drawLyricFrame(ctx, width, height, project, currentMs, bgImage);
+          drawLyricFrame(ctx, width, height, project, currentMs, bgImage, exportAssets);
           if (options?.onFrameRendered) {
             options.onFrameRendered(canvas);
           }
@@ -264,11 +328,45 @@ export function drawLyricFrame(
   height: number,
   project: ProjectData,
   timeMs: number,
-  bgImage: HTMLImageElement | null
+  bgImage: HTMLImageElement | null,
+  assets?: {
+    timelineImages?: Record<string, HTMLImageElement>;
+    bgVideo?: HTMLVideoElement | null;
+    overlayVideo?: HTMLVideoElement | null;
+  }
 ) {
+  const bgSource = project.background.bgSource || 'single';
+  let activeTimelineImage: any = null;
+  if (bgSource === 'multiple' && project.background.timelineImages && project.background.timelineImages.length > 0) {
+    activeTimelineImage = project.background.timelineImages.find(
+      (img) => timeMs >= img.startTimeMs && timeMs <= img.endTimeMs
+    ) || project.background.timelineImages[0];
+  }
+
   // 1. Clear background & Apply Cinematic Background Motion
   ctx.save();
-  if (bgImage && project.background.type === 'image') {
+  let bgImageToDraw: HTMLImageElement | null = null;
+  let drawSuccess = false;
+
+  if (bgSource === 'multiple' && activeTimelineImage) {
+    const preloaded = assets?.timelineImages?.[activeTimelineImage.id];
+    if (preloaded) {
+      bgImageToDraw = preloaded;
+    }
+  } else if (bgSource === 'video' && assets?.bgVideo) {
+    const videoEl = assets.bgVideo;
+    if (videoEl.duration > 0) {
+      videoEl.currentTime = (timeMs / 1000) % videoEl.duration;
+    }
+    ctx.drawImage(videoEl, 0, 0, width, height);
+    drawSuccess = true;
+  }
+
+  if (!bgImageToDraw && (project.background.type === 'image' || bgSource === 'single' || bgSource === 'ai_generate')) {
+    bgImageToDraw = bgImage;
+  }
+
+  if (bgImageToDraw && !drawSuccess) {
     // Cinematic camera motion calculations (slow zoom, pan, beat scale pulse)
     const motion = project.aiDesignerConfig?.backgroundMotion;
     const totalDuration = project.audioDurationMs || 30000;
@@ -296,33 +394,38 @@ export function drawLyricFrame(
       }
     }
 
-    const hRatio = width / bgImage.width;
-    const vRatio = height / bgImage.height;
+    const hRatio = width / bgImageToDraw.width;
+    const vRatio = height / bgImageToDraw.height;
     const baseRatio = Math.max(hRatio, vRatio);
     const finalRatio = baseRatio * motionZoom;
-    const centerShiftX = (width - bgImage.width * finalRatio) / 2 + motionPanX;
-    const centerShiftY = (height - bgImage.height * finalRatio) / 2 + motionPanY;
+    const centerShiftX = (width - bgImageToDraw.width * finalRatio) / 2 + motionPanX;
+    const centerShiftY = (height - bgImageToDraw.height * finalRatio) / 2 + motionPanY;
 
     ctx.drawImage(
-      bgImage,
+      bgImageToDraw,
       0,
       0,
-      bgImage.width,
-      bgImage.height,
+      bgImageToDraw.width,
+      bgImageToDraw.height,
       centerShiftX,
       centerShiftY,
-      bgImage.width * finalRatio,
-      bgImage.height * finalRatio
+      bgImageToDraw.width * finalRatio,
+      bgImageToDraw.height * finalRatio
     );
-  } else if (project.background.type === 'gradient') {
-    const grad = ctx.createLinearGradient(0, 0, width, height);
-    grad.addColorStop(0, '#0F172A');
-    grad.addColorStop(1, '#1E1B4B');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, width, height);
-  } else {
-    ctx.fillStyle = project.background.color || '#0F172A';
-    ctx.fillRect(0, 0, width, height);
+    drawSuccess = true;
+  }
+
+  if (!drawSuccess) {
+    if (project.background.type === 'gradient') {
+      const grad = ctx.createLinearGradient(0, 0, width, height);
+      grad.addColorStop(0, '#0F172A');
+      grad.addColorStop(1, '#1E1B4B');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, width, height);
+    } else {
+      ctx.fillStyle = project.background.color || '#0F172A';
+      ctx.fillRect(0, 0, width, height);
+    }
   }
 
   // 2. Dark Overlay
@@ -331,6 +434,34 @@ export function drawLyricFrame(
   ctx.fillRect(0, 0, width, height);
   ctx.globalAlpha = 1.0;
   ctx.restore();
+
+  // Draw overlay video if configured
+  if (project.background.overlayVideo && assets?.overlayVideo) {
+    const overlayVideoEl = assets.overlayVideo;
+    const cfg = project.background.overlayVideo;
+    if (overlayVideoEl.duration > 0) {
+      overlayVideoEl.currentTime = (timeMs / 1000) % overlayVideoEl.duration;
+    }
+
+    ctx.save();
+    if (cfg.blendMode === 'screen') {
+      ctx.globalCompositeOperation = 'screen';
+    } else if (cfg.blendMode === 'lighten') {
+      ctx.globalCompositeOperation = 'lighter';
+    }
+
+    ctx.globalAlpha = cfg.opacity ?? 0.8;
+    
+    const targetScale = cfg.scale ?? 1.0;
+    const targetX = (width * (cfg.positionX ?? 50)) / 100;
+    const targetY = (height * (cfg.positionY ?? 50)) / 100;
+
+    ctx.translate(targetX, targetY);
+    ctx.scale(targetScale, targetScale);
+
+    ctx.drawImage(overlayVideoEl, -width / 2, -height / 2, width, height);
+    ctx.restore();
+  }
 
   // 3. Check for active lyric line vs Instrumental Gap
   const activeLine = project.lyrics.find(
