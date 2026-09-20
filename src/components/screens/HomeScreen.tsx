@@ -14,6 +14,7 @@ import {
   Smartphone,
   ChevronRight,
   Sliders,
+  BookOpen,
 } from 'lucide-react';
 
 interface HomeScreenProps {
@@ -120,6 +121,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
         {/* Action Buttons Row */}
         <div className="mt-5 pt-4 border-t border-slate-800 flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => onNavigateToTab('quran_maker')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 text-xs font-bold border border-emerald-500/40 transition shadow-sm"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+            <span>📖 Quran Video Maker</span>
+          </button>
+
           <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-medium cursor-pointer border border-slate-700 transition">
             <Upload className="w-3.5 h-3.5 text-violet-400" />
             <span>Import Project (.json)</span>
@@ -157,13 +166,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
       </div>
 
-      {/* Two Workflow Choice Cards: Option A (Manual) vs Option B (✨ Auto Animate) */}
+      {/* Three Workflow Choice Cards: Option A (Manual) vs Option B (✨ Auto Animate) vs Option C (📖 Quran Maker) */}
       <div className="space-y-2.5">
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
-          Choose Your Lyric Video Workflow
+          Choose Your Video Workflow
         </h3>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
           {/* OPTION A: Manual Workflow */}
           <div
             onClick={() => onNavigateToTab('sync')}
@@ -191,7 +200,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </div>
           </div>
 
-          {/* OPTION B: ✨ Auto Animate Lyrics (NEW PROMINENT CARD) */}
+          {/* OPTION B: ✨ Auto Animate Lyrics */}
           <div
             onClick={() => onNavigateToTab('auto_animate')}
             className="group relative rounded-2xl bg-gradient-to-br from-violet-950/60 via-slate-900 to-amber-950/30 hover:to-amber-950/50 border border-amber-500/40 hover:border-amber-400 p-4 transition-all duration-200 cursor-pointer shadow-xl shadow-amber-500/5 hover:shadow-amber-500/15 flex flex-col justify-between"
@@ -217,6 +226,36 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
             <div className="mt-4 pt-3 border-t border-amber-500/20 flex items-center justify-between text-xs font-bold text-amber-400 group-hover:text-amber-300">
               <span>Enter Auto Animate Workflow</span>
+              <ChevronRight className="w-4 h-4 transition group-hover:translate-x-1" />
+            </div>
+          </div>
+
+          {/* OPTION C: 📖 Quran Video Maker */}
+          <div
+            onClick={() => onNavigateToTab('quran_maker')}
+            className="group relative rounded-2xl bg-gradient-to-br from-emerald-950/60 via-slate-900 to-teal-950/30 hover:to-teal-950/50 border border-emerald-500/40 hover:border-emerald-400 p-4 transition-all duration-200 cursor-pointer shadow-xl shadow-emerald-500/5 hover:shadow-emerald-500/15 flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-mono">
+                  <BookOpen className="w-3 h-3 text-emerald-400" />
+                  OPTION C • QURAN
+                </span>
+                <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">
+                  RTL + Tamil
+                </span>
+              </div>
+
+              <h4 className="text-sm font-bold text-white group-hover:text-emerald-300 transition flex items-center gap-1.5">
+                <span>📖 Quran Video Maker</span>
+              </h4>
+              <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                Spiritual recitations with authentic Arabic RTL typography, synchronized Tamil & English translations, and 15 presets.
+              </p>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-emerald-500/20 flex items-center justify-between text-xs font-bold text-emerald-400 group-hover:text-emerald-300">
+              <span>Launch Quran Studio</span>
               <ChevronRight className="w-4 h-4 transition group-hover:translate-x-1" />
             </div>
           </div>

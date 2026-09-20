@@ -252,6 +252,20 @@ export default function App() {
 
         {/* Right Header Actions */}
         <div className="flex items-center space-x-2">
+          {/* Direct Quran Maker Header Shortcut */}
+          <button
+            onClick={() => setActiveTab('quran_maker')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition shadow-sm ${
+              activeTab === 'quran_maker'
+                ? 'bg-emerald-600 border-emerald-500 text-white font-bold'
+                : 'bg-emerald-950/50 hover:bg-emerald-900/60 border-emerald-500/40 text-emerald-300'
+            }`}
+            title="Open Quran Video Maker"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="inline">📖 Quran Maker</span>
+          </button>
+
           {/* Quick Workflow Switcher Pill */}
           <button
             onClick={() => setActiveTab('auto_animate')}
@@ -290,6 +304,7 @@ export default function App() {
       <div className="flex h-11 bg-slate-900/60 border-b border-slate-800/60 px-4 items-center gap-1.5 overflow-x-auto text-xs shrink-0 scrollbar-none scroll-smooth">
         {[
           { id: 'home', label: 'Home', icon: Home },
+          { id: 'quran_maker', label: '📖 Quran Maker', icon: BookOpen },
           { id: 'song', label: 'Song & Audio', icon: Music },
           { id: 'lyrics', label: 'Lyrics', icon: FileText },
           { id: 'sync', label: 'Line Sync', icon: Sliders },
@@ -306,11 +321,15 @@ export default function App() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as TabType)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition ${
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition whitespace-nowrap ${
                 isCurrent
                   ? tab.id === 'auto_animate'
                     ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold shadow-sm'
+                    : tab.id === 'quran_maker'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-bold shadow-sm'
                     : 'bg-violet-600 text-white shadow-sm'
+                  : tab.id === 'quran_maker'
+                  ? 'text-emerald-400 hover:text-emerald-200 hover:bg-emerald-950/40 border border-emerald-500/30'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
               }`}
             >
@@ -439,6 +458,22 @@ export default function App() {
           <AIVisualDesignerScreen
             project={project}
             onUpdateProject={(upd) => setProject((prev) => ({ ...prev, ...upd }))}
+            onNavigateToTab={(t) => setActiveTab(t)}
+          />
+        )}
+
+        {activeTab === 'quran_maker' && (
+          <QuranMakerScreen
+            project={project}
+            onUpdateProject={(upd) => setProject((prev) => ({ ...prev, ...upd }))}
+            onAudioUpload={handleAudioUpload}
+            onLoadDemoAudio={handleLoadDemoAudio}
+            currentTimeMs={currentTimeMs}
+            durationMs={durationMs}
+            isPlaying={isPlaying}
+            onSeek={handleSeek}
+            onTogglePlay={handleTogglePlay}
+            audioBlob={audioBlob}
             onNavigateToTab={(t) => setActiveTab(t)}
           />
         )}
