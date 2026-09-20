@@ -8,6 +8,8 @@ export interface WordTiming {
 export interface LyricLine {
   id: string;
   text: string;
+  translation?: string;
+  english?: string;
   startTimeMs: number;
   endTimeMs: number;
   words?: WordTiming[];
@@ -67,15 +69,15 @@ export interface OverlayVideoConfig {
   url: string | null;
   fileName?: string;
   opacity: number;      // 0 to 1
-  brightness: number;   // 0 to 2
-  contrast: number;     // 0 to 2
-  saturation: number;   // 0 to 2
+  brightness?: number;   // 0 to 2
+  contrast?: number;     // 0 to 2
+  saturation?: number;   // 0 to 2
   scale: number;        // 0.1 to 3
   positionX: number;    // percent 0 to 100
   positionY: number;    // percent 0 to 100
   crop?: string;
-  startTimeMs: number;
-  endTimeMs: number;
+  startTimeMs?: number;
+  endTimeMs?: number;
   blendMode: 'screen' | 'lighten' | 'normal';
 }
 

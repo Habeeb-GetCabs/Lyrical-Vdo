@@ -12,6 +12,7 @@ import { ExportScreen } from './components/screens/ExportScreen';
 import { CIGuideScreen } from './components/screens/CIGuideScreen';
 import { AutoAnimateScreen } from './components/screens/AutoAnimateScreen';
 import { AIVisualDesignerScreen } from './components/screens/AIVisualDesignerScreen';
+import { QuranMakerScreen } from './components/screens/QuranMakerScreen';
 import { PWAInstallButton } from './components/pwa/PWAInstallButton';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { generateDemoRhythmAudioBlob } from './services/demoAudioGenerator';
@@ -27,6 +28,7 @@ import {
   Github,
   Check,
   Zap,
+  BookOpen,
 } from 'lucide-react';
 
 export type TabType =
@@ -38,6 +40,7 @@ export type TabType =
   | 'auto_animate'
   | 'design'
   | 'ai_designer'
+  | 'quran_maker'
   | 'preview'
   | 'export'
   | 'ci_guide';
